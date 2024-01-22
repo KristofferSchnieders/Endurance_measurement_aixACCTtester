@@ -1,4 +1,4 @@
-Project for endurance measurements. 
+# Project for endurance measurements. 
 
 For measuring the script Endurance_MeasurementScript has to be run. 
 In this main script the functions from the functions folder are used. 

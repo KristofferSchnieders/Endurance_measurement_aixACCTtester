@@ -115,15 +115,16 @@ def routine_IV_sweep(cassini,
     waveform_iv_sweep = waveforms.Waveform("sweep", np.array([wf_t, wf_V]),step_size=step_size)
     waveform_ground   = waveforms.Waveform("ground", np.array([wf_t, wf_V*0]),step_size=step_size)
     
-    if sum(V_gate)>0:
+
+    if sum(V_gate)==0:
+    
+        #Set DAs
+        cassini.set_waveform("wedge02", waveform=waveform_iv_sweep)
+        cassini.set_waveform("wedge03", waveform=waveform_ground)
+
+    else:
         waveform_gate     = waveforms.Waveform("gate", np.array([wf_t, wf_gate]),step_size=step_size)
 
-
-    #Set DAs
-    cassini.set_waveform("wedge02", waveform=waveform_iv_sweep)
-    cassini.set_waveform("wedge03", waveform=waveform_ground)
-
-    if sum(V_gate)>0:
         cassini.set_waveform("wedge01", waveform=waveform_ground)
         cassini.set_waveform("wedge02", waveform=waveform_gate)
         cassini.set_waveform("wedge03", waveform=waveform_iv_sweep)

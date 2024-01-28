@@ -10,6 +10,10 @@ import h5py
 import datetime
 import pandas as bearcats
 import os
+import sys 
+
+sys.path.append("DIR with scripts")
+from plot_data import make_figures
 
 
 # Read the measured data
@@ -146,7 +150,7 @@ def load_raw_data_and_store(measurement_path,
         Number of measurement.
     action : str
         Identifier for kind of measurement. 
-    id_site : int
+    id_site : inta
         Identifier of current device. (Only reasonable if combined with wafermap.)
     dir_data_save : str, optional
         Dir. in which we want to store the data. The default is r"\\iff1690.iff.kfa-juelich.de\data2\Data\Schnieders\Endurance\cute_cat".
@@ -180,8 +184,8 @@ def load_raw_data_and_store(measurement_path,
                             "measurement_path": measurement_path,
                             "measurement_nr": measurement_nr,
                             "action": action
-                                }])
-
+                            }])
+    
     filename_pkl = f"{action}_{'V_set='}{np.around(max(V),2)}_{'V_reset='}{np.around(min(V),2)}_{get_formatted_datetime()}.pkl"
     
     data.to_pickle(os.path.join(dir_data_save, filename_pkl))
@@ -276,6 +280,7 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2):
         R_states = R_states.append(abs(max(V_filt[indices])-min(V_filt[indices]))/abs(max(I_filt[indices])-min(I_filt[indices])))
     return R_states
 
+
 #####################################################################
 ## Combined Eval. fct.
 #####################################################################    
@@ -285,7 +290,8 @@ def main_eval(dir_device: str,
               measurement_nr: int, 
               action: str, 
               device_name: str, 
-              bool_sweep=True):
+              bool_sweep=True,
+              df_endurance=None):
     '''
     Use all functions for evaluating the data
 
@@ -303,6 +309,10 @@ def main_eval(dir_device: str,
         Name of device site.
     bool_sweep : bool, optional
         Sweep or not. The default is True.
+    df_endureance : DataFrame, optional
+        Dataframe, in which the resistance is stored. 
+        If Pandas df is received, the new R values are added. Otherwise, 
+        a new dataframe is initialized. 
 
     Returns
     -------
@@ -323,4 +333,25 @@ def main_eval(dir_device: str,
     else: 
         R_states = calc_R_pulse(I_filt, V_filt, V_read=0.2)
     
-    return R_states
+    if df_endurance == None:
+        df_endurance = bearcats.DataFrame([{'device': device_name,
+                                'R': R_states,
+                                'datetime': datetime.now().timestamp(), 
+                                "measurement_path": measurement_path,
+                                "measurement_nr": measurement_nr,
+                                "action": action
+                                }])
+    else: 
+        df_endurance = bearcats.concat([df_endurance, 
+                                        bearcats.DataFrame([{'device': device_name,
+                                        'R': R_states,
+                                        'datetime': datetime.now().timestamp(), 
+                                        "measurement_path": measurement_path,
+                                        "measurement_nr": measurement_nr,
+                                        "action": action
+                                        }])], ignore_index = True)
+    
+    # Make figure
+    make_figures(dir_device, action, tin, Vin, t, V, I)
+    
+    return R_states, df_endurance

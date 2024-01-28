@@ -1,0 +1,52 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Jan 28 14:50:14 2024
+
+@author: schnieders
+"""
+
+# Mathematical functions
+import numpy as np
+
+# Plotting 
+import matplotlib.pyplot as plt
+
+# Handling of foldersystem
+import os
+import sys 
+
+sys.path.append("X:\emrl\Pool\Bulletin-Juelich\Schnieders\Simulations\Model_AreaDependent\Fitting\Functions")
+
+from data_management import get_formatted_datetime
+
+def make_figures(dir_device, action, tin, Vin, t, V, I):
+    
+    fig, ax = plt.subplots(2,2)
+    ax[0,0].plot(tin, Vin)
+    ax[0,0].set_title(' Voltage in')
+    ax[0,1].plot(t[-1], V[-1])
+    ax[0,1].plot(t[-1],I[-1]*0.5e4)
+    ax[0,1].set_title('Voltage monitored, Filt. Current')
+    ax[1,0].plot(t[-1], I[-1])
+    ax[1,0].set_title('Current')
+    ax[1,1].plot(t[-1],I[-1])
+    ax[1,1].set_title('Filtered Current')
+    fig.set_figheight(6)
+    fig.set_figwidth(9)
+    fig.tight_layout()
+    fig.savefig(os.path.join(dir_device,  f"{action}_{'V_set='}{np.around(max(V),2)}_{'V_reset='}{np.around(min(V),2)}_{get_formatted_datetime()}.pkl"))
+    
+def figure_endurance(df_endurance, device, dir_device):
+    R = np.concatenate(df_endurance.R)
+    R_LRS, R_HRS = R[::2], R[1::2]
+    
+    fig, ax = plt.subplots(2,2)
+    fig.scatter(np.arange(0,len(R_LRS))+1, R_LRS, color="blue", label=r"R$_{LRS}$")
+    fig.scatter(np.arange(0,len(R_HRS))+1, R_HRS, color="red", label=r"R$_{HRS}$")
+    fig.set_xlabel("Nr. switched")
+    fig.set_ylabel(r"Resistance / $\Omega$")
+    fig.set_Title(r"Results endurance "+ device)
+    fig.legend()
+    fig.tight_layout()
+    fig.savefig(os.path.join(dir_device,  f"Endurance_device_{device}_{get_formatted_datetime()}.pkl"))
+    

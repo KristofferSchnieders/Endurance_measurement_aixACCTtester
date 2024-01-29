@@ -7,13 +7,13 @@ Created on Sun Jan 14 13:07:56 2024
 
 import numpy as np 
 import h5py
-import datetime
+from datetime import datetime
 import pandas as bearcats
 import os
 import sys 
 
-sys.path.append("DIR with scripts")
-from plot_data import make_figures
+sys.path.append(r"D:\Scripts\Schnieders\Endurance_measurement_aixACCTtester\functions")
+from plot_data import *
 
 
 # Read the measured data
@@ -99,14 +99,14 @@ def filter_data(I, V, t, Nmean=5):
 
     '''
     I_filt, V_filt, t_filt = list(), list(), list()
-    for i, dummmy_I in enumerate(I):
+    for i, dummy_I in enumerate(I):
         I_offset = np.mean(I[i][-100:])
         I_filt_dummy=running_median(I[i]-I_offset)
-        I_filt=I_filt.append((np.cumsum(I_filt_dummy[Nmean:])-np.cumsum(I_filt_dummy[:-Nmean]))/Nmean)
+        I_filt.append((np.cumsum(I_filt_dummy[Nmean:])-np.cumsum(I_filt_dummy[:-Nmean]))/Nmean)
         
         V_offset = np.mean(V[i][-100:])
         V_filt_dummy=running_median(V[i]-V_offset)
-        V_filt=V_filt.append((np.cumsum(V_filt_dummy[Nmean:])-np.cumsum(V_filt_dummy[:-Nmean]))/Nmean)
+        V_filt.append((np.cumsum(V_filt_dummy[Nmean:])-np.cumsum(V_filt_dummy[:-Nmean]))/Nmean)
         
         t_filt=t_filt.append(t[i][3:len(I_filt_dummy)+3])
 
@@ -186,7 +186,7 @@ def load_raw_data_and_store(measurement_path,
                             "action": action
                             }])
     
-    filename_pkl = f"{action}_{'V_set='}{np.around(max(V),2)}_{'V_reset='}{np.around(min(V),2)}_{get_formatted_datetime()}.pkl"
+    filename_pkl = f"{action}_{'V_set='}{np.around(max(V[0]),2)}_{'V_V_reset='}{np.around(min(V[0]),2)}_V_{get_formatted_datetime()}.pkl"
     
     data.to_pickle(os.path.join(dir_data_save, filename_pkl))
     return tin, Vin, t, V, I

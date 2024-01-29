@@ -4,6 +4,7 @@ Created on Thu Jan 11 15:52:59 2024
 
 @author: schnieders
 """
+#%% Imports
 
 #####################################################################
 ## Import functions
@@ -34,12 +35,13 @@ import pandas as pd
 import sys
 
 # Import own functions
-sys.path.append(r"X:\emrl\Pool\Bulletin-Juelich\Schnieders\Cooperations\Testing_Leticia\Scripts\aixACCT-Tester\Endurance_measurement_aixACCTtester\functions")
+sys.path.append(r"D:\Scripts\Schnieders\Endurance_measurement_aixACCTtester\functions")
 from wafermap_Neurotech1 import wafermap_Neurotech1_1R, wafermap_Neurotech1_1T1R 
 from waveforms_cassini import routine_IV_sweep, routine_IV_pulse
 from data_management import main_eval
 from algo_management import bool_states, bool_switched
 from plot_data import make_figures, figure_endurance
+#%% Settings measurements
 
 #####################################################################
 ## Parameters of measurements
@@ -50,19 +52,24 @@ interval_LRS = np.array([2, 5])*1e3
 interval_HRS = np.array([20, 100])*1e3
 
 # Specify sample
-sample_layout = "Neurotec_cat" # Mohit
-sample_material = 'cute_cat'
-sample_name = 'cat'
+sample_layout = "Neurotec1_1R"
+sample_material = 'TaO'
+sample_name = 'Die_43'
 measurement= 'Endurance' + sample_layout
 
 # Save direction
-save_dir = os.path.join(r"\\iff1690.iff.kfa-juelich.de\data2\Data\Schnieders\Endurance" ,
+save_dir = os.path.join(r"D:\Data\Schnieders\Endurance" ,
                         sample_layout, sample_material, sample_name)
 
 # TODO: Check, if 1R or 1T1R
 position, device_names, geometry = wafermap_Neurotech1_1R()
 
 # Parameters switching
+
+# Parameters sweeps
+t_break_forming, step_size_forming = 1e-3, 1e-4 # s
+sweep_rate = 1e1 # V/s
+
 
 # Parameters sweeps
 t_break_sweeps, step_size_sweep = 1e-4, 1e-5 # s
@@ -75,6 +82,7 @@ nr_forming = 1
 V_sweep_set, V_sweep_reset = 1.5, -1.5 # V
 V_sweep_gate = [0, 0]
 nr_presweeps = 100
+nr_sweeps =10
 
 cc_p, cc_n = 0.2, -2 # mA
 gain_sweep = Gain.MID
@@ -90,6 +98,7 @@ gain_pulse = Gain.MID
 nr_meas_endurance = [0, 1, 5, 10, 50, 100, 1000]
 
 bool_LRS, bool_HRS = bool_states(interval_LRS, interval_HRS)
+#%% Connect Tester
 
 # We first have to connect to Tester
 ###############################################################
@@ -105,21 +114,24 @@ if 'cassini' not in vars():
         pass
     
 # Metadata
-cassini.set_meta(operator="cute.cat", wafer_name=sample_layout+ '_'+ sample_material + '_'+ sample_name + '_'+ measurement, orientation=0)
+cassini.set_meta(operator="k.schnieders", wafer_name=sample_layout+ '_'+ sample_material + '_'+ sample_name + '_'+ measurement, orientation=0)
 
 # We first have to connect to Tester
 ###############################################################
 ## Connect Prober
 ###############################################################
 # Instance of Cassini
-
+#%% Measurements
+cassini.prober.move_height_level(ProberHeight.CONTACT)
 #TODO: Decide, which devices should be chosen.
 id_device_offset, id_max_device, id_step_device = 0, 5, 1
+
 for index_site, device_name in enumerate(device_names[id_device_offset:id_max_device:id_step_device]): 
+    cassini.prober.move_height_level(ProberHeight.CONTACT)
     index_site = index_site+id_device_offset
     
     # Save dir of device
-    dir_device = os.path.join(save_dir, device_name)
+    dir_device = os.path.join(save_dir, device_name[0], device_name[1])
     
     # Make sure, the dir. for the device exists. 
     os.makedirs(dir_device, exist_ok=True)
@@ -130,15 +142,16 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
 
     action = "Forming"
     # Measurement
+    
     measurement_path, measurement_nr, nr_rep = routine_IV_sweep(cassini, 
                          V_forming_set, 
                          V_forming_reset,
                          nr_forming,  # Nr. cycles
                          sweep_rate,
                          V_gate=V_forming_gate,
-                         t_break=t_break_sweeps, 
+                         t_break=t_break_forming, 
                          n_rep=1,
-                         step_size=step_size_sweep,
+                         step_size=step_size_forming,
                          gain=gain_sweep, 
                          cc_n=cc_n, 
                          cc_p=cc_p)
@@ -151,6 +164,7 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
                   device_name, 
                   bool_sweep=True,
                   df_endurance=None)
+    sdaf
     # Verify if forming successful
     bool_formed = bool_switched(R_states[1], R_states[3], bool_LRS, bool_HRS)
     
@@ -169,11 +183,11 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
     measurement_path, measurement_nr, nr_rep = routine_IV_sweep(cassini, 
                          V_sweep_set, 
                          V_sweep_reset,
-                         nr_presweeps,  # Nr. cycles
+                         int(nr_presweeps/10),  # Nr. cycles
                          sweep_rate,
                          V_gate=V_sweep_gate,
                          t_break=t_break_sweeps, 
-                         n_rep=1,
+                         n_rep=int(nr_presweeps/10),
                          step_size=step_size_sweep,
                          gain=gain_sweep, 
                          cc_n=cc_n, 
@@ -265,11 +279,11 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
             measurement_path, measurement_nr, nr_rep = routine_IV_sweep(cassini, 
                                  V_sweep_set, 
                                  V_sweep_reset,
-                                 nr_presweeps,  # Nr. cycles
+                                 nr_sweeps,  # Nr. cycles
                                  sweep_rate,
                                  V_gate=V_sweep_gate,
                                  t_break=t_break_sweeps, 
-                                 n_rep=10,
+                                 n_rep=1,
                                  step_size=step_size_sweep,
                                  gain=gain_sweep, 
                                  cc_n=cc_n, 
@@ -291,3 +305,5 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
             n_switch+=nr_sweep_switched
     
     figure_endurance(df_endurance, "Block " + device_name[0] + " device " + device_name[1], dir_device)
+cassini.prober.move_height_level(ProberHeight.SEPARATION)
+# %%

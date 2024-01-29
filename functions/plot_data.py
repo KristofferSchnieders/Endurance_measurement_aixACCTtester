@@ -15,9 +15,9 @@ import matplotlib.pyplot as plt
 import os
 import sys 
 
-sys.path.append("X:\emrl\Pool\Bulletin-Juelich\Schnieders\Simulations\Model_AreaDependent\Fitting\Functions")
+sys.path.append(r"D:\Scripts\Schnieders\Endurance_measurement_aixACCTtester\functions")
 
-from data_management import get_formatted_datetime
+from data_management import *
 
 def make_figures(dir_device, action, tin, Vin, t, V, I):
     

@@ -31,8 +31,8 @@ from algo_management import bool_states
 def routine_IV_sweep(cassini, 
                      V_set:float, 
                      V_reset:float, 
-                     cycle:int, 
-                     rate_sweep:float,
+                     cycle=1, 
+                     rate_sweep=1e3,
                      V_gate=[0,0],
                      t_break=1e-7, 
                      n_rep=1,
@@ -85,19 +85,27 @@ def routine_IV_sweep(cassini,
     # make sure that only one wf applied
     cassini.set_cycle(cycle)
 
-    t_set, t_reset = V_set/rate_sweep, V_reset/rate_sweep
+    t_set, t_reset = abs(V_set/rate_sweep), abs(V_reset/rate_sweep)
     #define waveform
     wf_t = [0, t_break, t_set , t_set, step_size,
                t_reset, t_reset, t_break]
     wf_t = np.round(np.cumsum(wf_t),9)
     
-    wf_V = np.array([0, 0, V_set, 0,
+    wf_V = np.array([0, 0, V_set, 0, 0,
                       V_reset,0,0])
     if sum(V_gate)>0:
         wf_gate = np.array([0, V_gate[0], V_gate[0], V_gate[0], V_gate[1],
                       V_gate[1],V_gate[1],0])
     
-    if n_rep < 1:
+    if n_rep>1:
+        for i in range(n_rep-1):
+            wf_t_temp = np.append(wf_t[:-1], wf_t_init[1:]+max(wf_t))
+            if wf_t_temp < 18e3*step_size: 
+                wf_t = wf_t_temp
+                wf_V = np.append(wf_V[:-1], wf_V_init[1:])
+                wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
+    
+    elif n_rep < 1:
         wf_t_init, wf_V_init, wf_gate_init = wf_t, wf_V, wf_gate
         nr_rep = 1
         while max(wf_t) < 18e3*step_size:
@@ -133,16 +141,16 @@ def routine_IV_sweep(cassini,
 
     ## Set ADs
     # First pin
-    cassini.set_ad("wedge02", max(wf_t)*1.05, termination=True)
+    cassini.set_ad("wedge02", max(wf_t)*1.2, termination=True)
     # Second pin
-    cassini.set_ad("wedge03", max(wf_t)*1.05, termination=True)
+    cassini.set_ad("wedge03", max(wf_t)*1.2, termination=True)
 
     ## Set sampling rate
-    cassini.set_recording_samplerate(int(step_size))
+    cassini.set_recording_samplerate(int(1/step_size))
     # Measurement
     measurement_path, measurement_nr = cassini.measurement()
 
-    return measurement_path, measurement_nr, nr_rep
+    return measurement_path, measurement_nr, n_rep
 
 # Pulses
 def routine_IV_pulse(cassini, 
@@ -219,9 +227,9 @@ def routine_IV_pulse(cassini,
     if bool_read: 
         #define waveform
         wf_t = [0, t_break, step_size, t_set, step_size,   # set
-                   t_break, step_size, t_set, step_size,   # read
+                   t_break, step_size, t_read, step_size,   # read
                    t_break, step_size, t_reset, step_size, # reset
-                   t_break, step_size, t_set, step_size,   # read
+                   t_break, step_size, t_read, step_size,   # read
                    t_break]
         wf_t = np.round(np.cumsum(wf_t),9)
         wf_V = np.array([0, V_set, V_set, 0,               # set
@@ -288,12 +296,12 @@ def routine_IV_pulse(cassini,
 
     ## Set ADs
     # First pin
-    cassini.set_ad("wedge02", max(wf_t)*1.05, termination=True)
+    cassini.set_ad("wedge02", max(wf_t)*1.2, termination=True)
     # Second pin
-    cassini.set_ad("wedge03", max(wf_t)*1.05, termination=True)
+    cassini.set_ad("wedge03", max(wf_t)*1.2, termination=True)
 
     ## Set sampling rate
-    cassini.set_recording_samplerate(int(step_size))
+    cassini.set_recording_samplerate(int(1/step_size))
     # Measurement
     measurement_path, measurement_nr = cassini.measurement()
 

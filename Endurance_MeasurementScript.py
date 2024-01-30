@@ -67,15 +67,14 @@ position, device_names, geometry = wafermap_Neurotech1_1R()
 # Parameters switching
 
 # Parameters sweeps
-t_break_forming, step_size_forming = 1e-3, 1e-4 # s
-sweep_rate = 1e1 # V/s
-
+t_break_forming, step_size_forming = 1e-4, 1e-5 # s
+sweep_rate_form = 1e2 # V/s
 
 # Parameters sweeps
 t_break_sweeps, step_size_sweep = 1e-4, 1e-5 # s
-sweep_rate = 1e1 # V/s
+sweep_rate = 1e3 # V/s
 
-V_forming_set, V_forming_reset = 3, -2 # V
+V_forming_set, V_forming_reset = 1, -1 # V
 V_forming_gate = [0, 0]
 nr_forming = 1
 
@@ -84,18 +83,18 @@ V_sweep_gate = [0, 0]
 nr_presweeps = 100
 nr_sweeps =10
 
-cc_p, cc_n = 0.2, -2 # mA
-gain_sweep = Gain.MID
+cc_ps, cc_ns = 0.2, -2 # mA
+gain_sweep = Gain.LOW
 
 # Parameters pulses
 t_break_pulse, t_set_pulse, t_reset_pulse, t_pulse_read = 50e-9, 1e-6, 10e-6, 1e-6 # s
 V_pulse_set, V_pulse_reset, V_pulse_read = 1.5, -1.5, 0.2 # V
 V_pulse_gate = [0, 0, 0]
-cc_p, cc_n = 0.2, -2 # mA
+cc_pp, cc_np = 0.2, -2 # mA
 gain_pulse = Gain.MID
 
 # Number of endurance mesasurements
-nr_meas_endurance = [0, 1, 5, 10, 50, 100, 1000]
+nr_meas_endurance = [1, 5, 10, 50, 100, 1000]
 
 bool_LRS, bool_HRS = bool_states(interval_LRS, interval_HRS)
 #%% Connect Tester
@@ -113,6 +112,7 @@ if 'cassini' not in vars():
     except:
         pass
     
+    
 # Metadata
 cassini.set_meta(operator="k.schnieders", wafer_name=sample_layout+ '_'+ sample_material + '_'+ sample_name + '_'+ measurement, orientation=0)
 
@@ -127,6 +127,7 @@ cassini.prober.move_height_level(ProberHeight.CONTACT)
 id_device_offset, id_max_device, id_step_device = 0, 5, 1
 
 for index_site, device_name in enumerate(device_names[id_device_offset:id_max_device:id_step_device]): 
+    cassini.prober.goto(0,0,id_device)
     cassini.prober.move_height_level(ProberHeight.CONTACT)
     index_site = index_site+id_device_offset
     
@@ -146,15 +147,15 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
     measurement_path, measurement_nr, nr_rep = routine_IV_sweep(cassini, 
                          V_forming_set, 
                          V_forming_reset,
-                         nr_forming,  # Nr. cycles
-                         sweep_rate,
+                         cycle=nr_forming,
+                         rate_sweep= sweep_rate_form,
                          V_gate=V_forming_gate,
                          t_break=t_break_forming, 
                          n_rep=1,
                          step_size=step_size_forming,
                          gain=gain_sweep, 
-                         cc_n=cc_n, 
-                         cc_p=cc_p)
+                         cc_n=cc_ns, 
+                         cc_p=cc_ps)
 
     # Evaluate measurement 
     R_states, df_endurance = main_eval(dir_device, 
@@ -164,9 +165,9 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
                   device_name, 
                   bool_sweep=True,
                   df_endurance=None)
-    sdaf
+    
     # Verify if forming successful
-    bool_formed = bool_switched(R_states[1], R_states[3], bool_LRS, bool_HRS)
+    bool_formed = bool_switched(R_states[0], R_states[1], bool_LRS, bool_HRS)
     
     # If the device is not formed, we go on.
     if not bool_formed:
@@ -183,15 +184,15 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
     measurement_path, measurement_nr, nr_rep = routine_IV_sweep(cassini, 
                          V_sweep_set, 
                          V_sweep_reset,
-                         int(nr_presweeps/10),  # Nr. cycles
-                         sweep_rate,
+                         cycle=int(nr_presweeps/10),  # Nr. cycles
+                         rate_sweep=sweep_rate,
                          V_gate=V_sweep_gate,
                          t_break=t_break_sweeps, 
                          n_rep=int(nr_presweeps/10),
                          step_size=step_size_sweep,
                          gain=gain_sweep, 
-                         cc_n=cc_n, 
-                         cc_p=cc_p)
+                         cc_n=cc_ns, 
+                         cc_p=cc_ps)
     
     # Evaluate measurement 
     R_states, df_endurance = main_eval(dir_device, 
@@ -204,7 +205,7 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
     
     
     # Verify if forming successful
-    nr_sweep_switched = sum([bool_switched(R_states[i*4+1], R_states[i*4+3], bool_LRS, bool_HRS) for i in range(int(len(R_states)/4))])
+    nr_sweep_switched = sum([bool_switched(R_states[i*2], R_states[i*2+1], bool_LRS, bool_HRS) for i in range(int(len(R_states)/4))])
     if nr_sweep_switched<=nr_presweeps*0.8:
         continue
     else:
@@ -233,8 +234,8 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
                                                                 step_size=t_break_pulse,
                                                                 gain=gain_pulse, 
                                                                 bool_read=False, 
-                                                                cc_n=cc_n,
-                                                                cc_p=cc_p)
+                                                                cc_n=cc_np,
+                                                                cc_p=cc_pp)
             n_dummy+=nr_rep
         action = "Pulse"
         measurement_path, measurement_nr, nr_rep = routine_IV_pulse(cassini, 
@@ -251,8 +252,8 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
                                                             step_size=t_break_pulse,
                                                             gain=gain_pulse, 
                                                             bool_read=True, 
-                                                            cc_n=cc_n,
-                                                            cc_p=cc_p)
+                                                            cc_n=cc_np,
+                                                            cc_p=cc_pp)
         # Evaluate measurement 
         R_states, df_endurance = main_eval(dir_device, 
                       measurement_path, 
@@ -286,8 +287,8 @@ for index_site, device_name in enumerate(device_names[id_device_offset:id_max_de
                                  n_rep=1,
                                  step_size=step_size_sweep,
                                  gain=gain_sweep, 
-                                 cc_n=cc_n, 
-                                 cc_p=cc_p)
+                                 cc_n=cc_ns, 
+                                 cc_p=cc_ps)
             
             # Evaluate measurement 
             R_states, df_endurance = main_eval(dir_device, 

@@ -17,10 +17,32 @@ import numpy as np
 
 import sys 
 
+import copy
+
 sys.path.append("DIR with scripts")
 from data_management import *
 from algo_management import bool_states
 
+def round_base(wf_t, step_size:float):
+    '''
+    Function for rounding to the stepsize
+
+    Parameters
+    ----------
+    wf_t: array like 
+        time vector that has to be rounded
+    step_size: float 
+        Base of rounding
+    Returns
+    -------
+    new_wf_t: array like
+        Time vector rounded according to  stepsize. 
+        If time vector fine, this step also works.
+    '''
+    delta_wf_t = np.ceil(wf_t/step_size)
+    wf_t = np.array([int(t) if int(t) > 0 else 1 for t in delta_wf_t])
+
+    return np.cumsum(step_size * np.round(wf_t))
 
 
 #####################################################################
@@ -39,7 +61,8 @@ def routine_IV_sweep(cassini,
                      step_size=1e-9,
                      gain=Gain.HIGH, 
                      cc_n=-2,
-                     cc_p=2):
+                     cc_p=2,
+                     probe_switch=ProbeSwitch.SAMPLE):
     '''
     Function performing sweeps
 
@@ -82,42 +105,55 @@ def routine_IV_sweep(cassini,
         Number of current measurement.
 
     '''
+
+    # We have to assure that step size is following the form: 2**n * 1e-9, n in natural numbers
+    # We round the stepsize down to the next value to the form above.
+    step_size = 2**np.round(np.log2(step_size*1e9))*1e-9
+
     # make sure that only one wf applied
     cassini.set_cycle(cycle)
 
     t_set, t_reset = abs(V_set/rate_sweep), abs(V_reset/rate_sweep)
     #define waveform
-    wf_t = [0, t_break, t_set , t_set, step_size,
-               t_reset, t_reset, t_break]
-    wf_t = np.round(np.cumsum(wf_t),9)
-    
     wf_V = np.array([0, 0, V_set, 0, 0,
                       V_reset,0,0])
+    
+    wf_t = np.array([0, t_break, t_set , t_set, step_size*10,
+               t_reset, t_reset, t_break])
+    wf_t = round_base(wf_t, step_size)
+
     if sum(V_gate)>0:
         wf_gate = np.array([0, V_gate[0], V_gate[0], V_gate[0], V_gate[1],
                       V_gate[1],V_gate[1],0])
+    else:
+        wf_gate =  np.array([0,0,0])
     
     if n_rep>1:
-        for i in range(n_rep-1):
-            wf_t_temp = np.append(wf_t[:-1], wf_t_init[1:]+max(wf_t))
-            if wf_t_temp < 18e3*step_size: 
-                wf_t = wf_t_temp
-                wf_V = np.append(wf_V[:-1], wf_V_init[1:])
-                wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
-    
-    elif n_rep < 1:
-        wf_t_init, wf_V_init, wf_gate_init = wf_t, wf_V, wf_gate
+        wf_t_init, wf_V_init, wf_gate_init = copy.deepcopy(wf_t), copy.deepcopy(wf_V), copy.deepcopy(wf_gate)
+        wf_t_temp = wf_t_init
+        wf_V_temp = wf_V_init
         nr_rep = 1
-        while max(wf_t) < 18e3*step_size:
+        for i in range(n_rep-1):
+            if max(wf_t_temp) < 60e3*step_size: 
+                wf_t_temp = np.append(wf_t_temp[:-1], wf_t_init[1:]+max(wf_t_temp))
+                wf_V_temp = np.append(wf_V_temp[:-1], wf_V_init[1:])
+                wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
+                nr_rep+=1
+    elif n_rep < 1:
+        wf_t_init, wf_V_init, wf_gate_init = copy.deepcopy(wf_t), copy.deepcopy(wf_V), copy.deepcopy(wf_gate)
+        wf_t_temp = wf_t_init
+        wf_V_temp = wf_V_init
+        nr_rep = 1
+        while max(wf_t) < 60e3*step_size:
             wf_t_temp = np.append(wf_t[:-1], wf_t_init[1:]+max(wf_t))
-            if wf_t_temp < 18e3*step_size: 
+            if wf_t_temp < 60e3*step_size: 
                 wf_t = wf_t_temp
                 wf_V = np.append(wf_V[:-1], wf_V_init[1:])
                 wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
                 nr_rep+=1
     # set probeboard parameters
     cassini.set_parameter_probeboard(gain=gain, ccn=cc_n, ccp=cc_p,
-                                     cc_deactivate=False)
+                                     cc_deactivate=False,probe_switch=probe_switch)
     
     # Define waveforms
     waveform_iv_sweep = waveforms.Waveform("sweep", np.array([wf_t, wf_V]),step_size=step_size)
@@ -146,6 +182,7 @@ def routine_IV_sweep(cassini,
     cassini.set_ad("wedge03", max(wf_t)*1.2, termination=True)
 
     ## Set sampling rate
+    print(int(step_size))
     cassini.set_recording_samplerate(int(1/step_size))
     # Measurement
     measurement_path, measurement_nr = cassini.measurement()
@@ -218,19 +255,23 @@ def routine_IV_pulse(cassini,
     measurement_nr : int
         Number of current measurement.
 
-
     '''
+
+    # We have to assure that step size is following the form: 2**n * 1e-9, n in natural numbers
+    # We round the stepsize down to the next value to the form above.
+    step_size = 2**np.round(np.log2(step_size*1e9))*1e-9
+
     # make sure that only one wf applied
     cassini.set_cycle(cycle)
 
 
     if bool_read: 
         #define waveform
-        wf_t = [0, t_break, step_size, t_set, step_size,   # set
+        wf_t = np.array([0, t_break, step_size, t_set, step_size,   # set
                    t_break, step_size, t_read, step_size,   # read
                    t_break, step_size, t_reset, step_size, # reset
                    t_break, step_size, t_read, step_size,   # read
-                   t_break]
+                   t_break])
         wf_t = np.round(np.cumsum(wf_t),9)
         wf_V = np.array([0, V_set, V_set, 0,               # set
                          0, V_read, V_read, 0,             # read
@@ -243,12 +284,14 @@ def routine_IV_pulse(cassini,
                                 V_gate[1], V_gate[1], V_gate[1], V_gate[1],
                                 V_gate[2], V_gate[2], V_gate[2], V_gate[2], 
                                 0])
+        else:
+            wf_gate=np.array([0,0,0])
     else: 
         #define waveform
         wf_t = [0, t_break, step_size, t_set, step_size,   # set
                    t_break, step_size, t_reset, step_size, # reset
                    t_break]
-        wf_t = np.round(np.cumsum(wf_t),9)
+        wf_t = round_base(wf_t, step_size)
         wf_V = np.array([0, V_set, V_set, 0,               # set
                          0, V_reset, V_reset, 0,           # reset
                          0])
@@ -256,17 +299,19 @@ def routine_IV_pulse(cassini,
             wf_gate = np.array([0, V_gate[0], V_gate[0], V_gate[0],
                                 V_gate[1], V_gate[1], V_gate[1], V_gate[1], 
                                 0])
-    
-    if n_rep < 1:
-        wf_t_init, wf_V_init, wf_gate_init = wf_t, wf_V, wf_gate
+    wf_t = round_base(wf_t, step_size)
+    if n_rep < 0:
+        wf_t_init, wf_V_init, wf_gate_init = copy.deepcopy(wf_t), copy.deepcopy(wf_V), copy.deepcopy(wf_gate)
         nr_rep = 1
-        while max(wf_t) < 18e3*step_size:
+        while max(wf_t) < 60e3*step_size:
             wf_t_temp = np.append(wf_t[:-1], wf_t_init[1:]+max(wf_t))
-            if wf_t_temp < 18e3*step_size: 
+            if max(wf_t_temp) < 60e3*step_size: 
                 wf_t = wf_t_temp
                 wf_V = np.append(wf_V[:-1], wf_V_init[1:])
                 wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
                 nr_rep+=1
+            else:
+                continue
     
     # set probeboard parameters
     cassini.set_parameter_probeboard(gain=gain, ccn=cc_n, ccp=cc_p,

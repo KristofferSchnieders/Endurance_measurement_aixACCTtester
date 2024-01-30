@@ -108,7 +108,7 @@ def filter_data(I, V, t, Nmean=5):
         V_filt_dummy=running_median(V[i]-V_offset)
         V_filt.append((np.cumsum(V_filt_dummy[Nmean:])-np.cumsum(V_filt_dummy[:-Nmean]))/Nmean)
         
-        t_filt=t_filt.append(t[i][3:len(I_filt_dummy)+3])
+        t_filt.append(t[i][3:len(I_filt_dummy)+3])
 
     return I_filt, V_filt, t_filt
 
@@ -196,7 +196,7 @@ def load_raw_data_and_store(measurement_path,
 #  Find read sections
 ###############################
 # Find read sections
-def find_read_sections(read_indices, n = 20, min_length = 50):
+def find_read_sections(read_indices, n = 20, min_length = 20):
     '''
     Find sections in which read voltage is applied.
 
@@ -249,8 +249,8 @@ def calc_R_pulse(I_filt, V_filt, V_read=0.2):
     '''
     R_states = []
     for i in I_filt: 
-        for indices in find_read_sections(np.where(np.logical_and(abs(V_filt[i])>V_read-0.05,
-                                                                  abs(V_filt[i])<V_read+0.05))[0]):
+        for indices in find_read_sections(np.where(np.logical_and(abs(V_filt[i])>V_read-0.1,
+                                                                  abs(V_filt[i])<V_read+0.1))[0]):
             R_states = R_states.append(np.mean(V_filt[i][indices]/I_filt[i][indices]))
     return R_states
 
@@ -275,9 +275,11 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2):
     '''
 
     R_states = []
-    for indices in find_read_sections(np.where(np.logical_and(abs(V_filt)>V_read-0.1,
-                                                              abs(V_filt)<V_read+0.1))[0]):
-        R_states = R_states.append(abs(max(V_filt[indices])-min(V_filt[indices]))/abs(max(I_filt[indices])-min(I_filt[indices])))
+    for index_f, V_f in enumerate(V_filt):
+        for indices in find_read_sections(np.where(np.logical_and(abs(V_f)>V_read-0.1,
+                                                                abs(V_f)<V_read+0.1))[0]):
+            if (V_f[indices[0]]-V_f[indices[-1]])<0:
+                R_states.append(abs(max(V_f[indices])-min(V_f[indices]))/abs(I_filt[index_f][indices[-1]])-min(I_filt[index_f][indices[0]]))
     return R_states
 
 
@@ -333,7 +335,7 @@ def main_eval(dir_device: str,
     else: 
         R_states = calc_R_pulse(I_filt, V_filt, V_read=0.2)
     
-    if df_endurance == None:
+    if type(df_endurance) == type(None):
         df_endurance = bearcats.DataFrame([{'device': device_name,
                                 'R': R_states,
                                 'datetime': datetime.now().timestamp(), 

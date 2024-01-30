@@ -19,6 +19,21 @@ sys.path.append(r"D:\Scripts\Schnieders\Endurance_measurement_aixACCTtester\func
 
 from data_management import *
 
+
+def get_formatted_datetime():
+    '''
+    Return time stamp
+
+    Returns
+    -------
+    formatted_time : str
+        Time stamp with current time.
+
+    '''
+    current_time = datetime.now()
+    formatted_time = current_time.strftime('%Y_%m_%d_%H_%M')
+    return formatted_time
+
 def make_figures(dir_device, action, tin, Vin, t, V, I):
     
     fig, ax = plt.subplots(2,2)
@@ -34,7 +49,7 @@ def make_figures(dir_device, action, tin, Vin, t, V, I):
     fig.set_figheight(6)
     fig.set_figwidth(9)
     fig.tight_layout()
-    fig.savefig(os.path.join(dir_device,  f"{action}_{'V_set='}{np.around(max(V),2)}_{'V_reset='}{np.around(min(V),2)}_{get_formatted_datetime()}.pkl"))
+    fig.savefig(os.path.join(dir_device,  f"{action}_{'V_set='}{np.around(max(Vin),2)}_{'V_reset='}{np.around(min(Vin),2)}_{get_formatted_datetime()}.png"))
     
 def figure_endurance(df_endurance, device, dir_device):
     R = np.concatenate(df_endurance.R)
@@ -48,5 +63,5 @@ def figure_endurance(df_endurance, device, dir_device):
     fig.set_Title(r"Results endurance "+ device)
     fig.legend()
     fig.tight_layout()
-    fig.savefig(os.path.join(dir_device,  f"Endurance_device_{device}_{get_formatted_datetime()}.pkl"))
+    fig.savefig(os.path.join(dir_device,  f"Endurance_device_{device}_{get_formatted_datetime()}.png"))
     

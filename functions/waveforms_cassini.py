@@ -23,6 +23,9 @@ sys.path.append("DIR with scripts")
 from data_management import *
 from algo_management import bool_states
 
+# Here, we still have a security gap to the real maximum.
+MAX_DATAPOINTS_AITESTER = 70e3
+
 def round_base(wf_t, step_size:float):
     '''
     Function for rounding to the stepsize
@@ -122,31 +125,36 @@ def routine_IV_sweep(cassini,
                t_reset, t_reset, t_break])
     wf_t = round_base(wf_t, step_size)
 
+    # If we define a gate voltage apart from 0V, we also define a waveform for the gate
     if sum(V_gate)>0:
         wf_gate = np.array([0, V_gate[0], V_gate[0], V_gate[0], V_gate[1],
                       V_gate[1],V_gate[1],0])
     else:
         wf_gate =  np.array([0,0,0])
     
+    # Concatenate the same waveform together
+    # If nr. of repetitions fixed, then concatenate this many. (If waveform not to long.)
     if n_rep>1:
         wf_t_init, wf_V_init, wf_gate_init = copy.deepcopy(wf_t), copy.deepcopy(wf_V), copy.deepcopy(wf_gate)
         wf_t_temp = wf_t_init
         wf_V_temp = wf_V_init
         nr_rep = 1
         for i in range(n_rep-1):
-            if max(wf_t_temp) < 60e3*step_size: 
+            if max(wf_t_temp) < MAX_DATAPOINTS_AITESTER*step_size: 
                 wf_t_temp = np.append(wf_t_temp[:-1], wf_t_init[1:]+max(wf_t_temp))
                 wf_V_temp = np.append(wf_V_temp[:-1], wf_V_init[1:])
                 wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
                 nr_rep+=1
+    # !!! Option to concatenate as many signals as possible. The number of !!! 
+    # !!! signals then is given out !!!
     elif n_rep < 1:
         wf_t_init, wf_V_init, wf_gate_init = copy.deepcopy(wf_t), copy.deepcopy(wf_V), copy.deepcopy(wf_gate)
         wf_t_temp = wf_t_init
         wf_V_temp = wf_V_init
         nr_rep = 1
-        while max(wf_t) < 60e3*step_size:
+        while max(wf_t) < MAX_DATAPOINTS_AITESTER*step_size:
             wf_t_temp = np.append(wf_t[:-1], wf_t_init[1:]+max(wf_t))
-            if wf_t_temp < 60e3*step_size: 
+            if wf_t_temp < MAX_DATAPOINTS_AITESTER*step_size: 
                 wf_t = wf_t_temp
                 wf_V = np.append(wf_V[:-1], wf_V_init[1:])
                 wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
@@ -159,7 +167,7 @@ def routine_IV_sweep(cassini,
     waveform_iv_sweep = waveforms.Waveform("sweep", np.array([wf_t, wf_V]),step_size=step_size)
     waveform_ground   = waveforms.Waveform("ground", np.array([wf_t, wf_V*0]),step_size=step_size)
     
-
+    # We have to load signals into different channels according to structure.
     if sum(V_gate)==0:
     
         #Set DAs
@@ -300,18 +308,34 @@ def routine_IV_pulse(cassini,
                                 V_gate[1], V_gate[1], V_gate[1], V_gate[1], 
                                 0])
     wf_t = round_base(wf_t, step_size)
-    if n_rep < 0:
+    
+    # !!! Option to concatenate as many signals as possible. The number of !!! 
+    # !!! signals then is given out !!!
+    if n_rep>1:
         wf_t_init, wf_V_init, wf_gate_init = copy.deepcopy(wf_t), copy.deepcopy(wf_V), copy.deepcopy(wf_gate)
+        wf_t_temp = wf_t_init
+        wf_V_temp = wf_V_init
         nr_rep = 1
-        while max(wf_t) < 60e3*step_size:
+        for i in range(n_rep-1):
+            if max(wf_t_temp) < MAX_DATAPOINTS_AITESTER*step_size: 
+                wf_t_temp = np.append(wf_t_temp[:-1], wf_t_init[1:]+max(wf_t_temp))
+                wf_V_temp = np.append(wf_V_temp[:-1], wf_V_init[1:])
+                wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
+                nr_rep+=1
+    # !!! Option to concatenate as many signals as possible. The number of !!! 
+    # !!! signals then is given out !!!
+    elif n_rep < 1:
+        wf_t_init, wf_V_init, wf_gate_init = copy.deepcopy(wf_t), copy.deepcopy(wf_V), copy.deepcopy(wf_gate)
+        wf_t_temp = wf_t_init
+        wf_V_temp = wf_V_init
+        nr_rep = 1
+        while max(wf_t) < MAX_DATAPOINTS_AITESTER*step_size:
             wf_t_temp = np.append(wf_t[:-1], wf_t_init[1:]+max(wf_t))
-            if max(wf_t_temp) < 60e3*step_size: 
+            if wf_t_temp < MAX_DATAPOINTS_AITESTER*step_size: 
                 wf_t = wf_t_temp
                 wf_V = np.append(wf_V[:-1], wf_V_init[1:])
                 wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
                 nr_rep+=1
-            else:
-                continue
     
     # set probeboard parameters
     cassini.set_parameter_probeboard(gain=gain, ccn=cc_n, ccp=cc_p,
@@ -321,6 +345,8 @@ def routine_IV_pulse(cassini,
     waveform_iv_sweep = waveforms.Waveform("sweep", np.array([wf_t, wf_V]),step_size=step_size)
     waveform_ground   = waveforms.Waveform("ground", np.array([wf_t, wf_V*0]),step_size=step_size)
     
+    
+    # We have to load signals into different channels according to structure.
     if sum(V_gate)>0:
         waveform_gate     = waveforms.Waveform("gate", np.array([wf_t, wf_gate]),step_size=step_size)
 

@@ -147,7 +147,7 @@ def wafermap_Neurotech1_1R():
     ## Bring data to readable form.
     ##############################################################################
     position_devices.pop(0), name_device.pop(0), geometries.pop(0)
-    positions, name, geometry =np.array(position_devices), np.array(name_device), np.array(geometries)
+    positions, name, geometry =-np.array(position_devices), np.array(name_device), np.array(geometries)
 
     return positions, name, geometry
 

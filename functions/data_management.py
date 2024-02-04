@@ -51,6 +51,36 @@ def read_data(measurement_path: str, measurement_nr: int):
  
     return tin, Vin, tread, Vread, Iread
 
+def smooth_mean(x, N=10):
+    '''
+    We want to smooth the data. Due to floating point errors, we have to cannot do this with cumsum
+    Parameters:
+    ----------
+        x: array like
+            Data  to be smoothed 
+        N: int
+            Number of datapoints to average over
+    Returns:
+   ----------
+        smoothedList: array like
+            Smoothed data
+    '''
+    smoothList = list()
+    lenx = len(x)/1000
+    if lenx > 1000:
+        for id_smooth in range(1000): 
+            cumsum = np.cumsum(x[int(id_smooth*lenx): np.min([int((1+id_smooth)*lenx), len(x)-1])])
+            if id_smooth == 0: 
+                smoothList = smoothList + list((cumsum[N::N]-cumsum[:-N:N]) / N)
+            else: 
+                smoothList = smoothList + list((cumsum[N::N]-cumsum[:-N:N]) / N)
+            
+    else:
+        cumsum = np.cumsum(x)
+        smoothList = (cumsum[N::N]-cumsum[:-N:N]) / N
+
+    return np.array(smoothList)
+
 def running_median(data, n_runmed=10):
     '''
     Can take quite some time for longer array.
@@ -100,15 +130,16 @@ def filter_data(I, V, t, Nmean=5):
     '''
     I_filt, V_filt, t_filt = list(), list(), list()
     for i, dummy_I in enumerate(I):
-        I_offset = np.mean(I[i][-100:])
-        I_filt_dummy=running_median(I[i]-I_offset)
-        I_filt.append((np.cumsum(I_filt_dummy[Nmean:])-np.cumsum(I_filt_dummy[:-Nmean]))/Nmean)
+        I_offset = np.mean(I[i][-20:])
+        I_filt_dummy=smooth_mean(I[i]-I_offset,N=2)
+        I_filt.append(running_median(I_filt_dummy[Nmean:],n_runmed=4))
         
-        V_offset = np.mean(V[i][-100:])
-        V_filt_dummy=running_median(V[i]-V_offset)
-        V_filt.append((np.cumsum(V_filt_dummy[Nmean:])-np.cumsum(V_filt_dummy[:-Nmean]))/Nmean)
+        V_offset = np.mean(V[i][-20:])
+        V_filt_dummy=smooth_mean(V[i]-V_offset,N=2)
+
+        V_filt.append(running_median(V_filt_dummy[Nmean:],n_runmed=4))
         
-        t_filt.append(t[i][3:len(I_filt_dummy)+3])
+        t_filt.append(t[i][:len(I_filt[-1])])
 
     return I_filt, V_filt, t_filt
 
@@ -196,7 +227,7 @@ def load_raw_data_and_store(measurement_path,
 #  Find read sections
 ###############################
 # Find read sections
-def find_read_sections(read_indices, n = 20, min_length = 20):
+def find_read_sections(read_indices, n = 10, min_length = 10):
     '''
     Find sections in which read voltage is applied.
 
@@ -248,10 +279,14 @@ def calc_R_pulse(I_filt, V_filt, V_read=0.2):
 
     '''
     R_states = []
-    for i in I_filt: 
-        for indices in find_read_sections(np.where(np.logical_and(abs(V_filt[i])>V_read-0.1,
-                                                                  abs(V_filt[i])<V_read+0.1))[0]):
-            R_states = R_states.append(np.mean(V_filt[i][indices]/I_filt[i][indices]))
+    for i, I_f in enumerate(I_filt): 
+        if len(find_read_sections(np.where(np.logical_and(V_filt[i]>V_read-0.1,
+                                                                  V_filt[i]<V_read+0.1))[0],n=5,min_length=5))==2:
+            asdf
+        for indices in find_read_sections(np.where(np.logical_and(V_filt[i]>V_read-0.1,
+                                                                  V_filt[i]<V_read+0.1))[0],n=5,min_length=5):
+            R_states.append(abs(np.mean(V_filt[i][indices[2:]]/I_filt[i][indices[2:]])))
+
     return R_states
 
 def calc_R_sweep(I_filt, V_filt, V_read=0.2):
@@ -279,7 +314,13 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2):
         for indices in find_read_sections(np.where(np.logical_and(abs(V_f)>V_read-0.1,
                                                                 abs(V_f)<V_read+0.1))[0]):
             if (V_f[indices[0]]-V_f[indices[-1]])<0:
-                R_states.append(abs(max(V_f[indices])-min(V_f[indices]))/abs(I_filt[index_f][indices[-1]])-min(I_filt[index_f][indices[0]]))
+                # There are different ways of calculating the resistnace
+                # Currently we prefer fitting to the Gerade, as we hope  to mitigate outlieres by this in the best way
+                if False:
+                    R_states.append(abs(V_f[indices][0]-V_f[indices][-1])/abs(I_filt[index_f][indices[-1]])-I_filt[index_f][indices[0]])
+                else:
+                    pol_fit = np.polyfit(V_f[indices], I_filt[index_f][indices], 1)
+                    R_states.append(1/pol_fit[0])
     return R_states
 
 
@@ -354,6 +395,6 @@ def main_eval(dir_device: str,
                                         }])], ignore_index = True)
     
     # Make figure
-    make_figures(dir_device, action, tin, Vin, t, V, I)
+    make_figures(dir_device, action, tin, Vin, t, V, I, t_filt, V_filt , I_filt)
     
     return R_states, df_endurance

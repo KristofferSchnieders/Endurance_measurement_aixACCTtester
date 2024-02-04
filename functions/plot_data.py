@@ -34,17 +34,17 @@ def get_formatted_datetime():
     formatted_time = current_time.strftime('%Y_%m_%d_%H_%M')
     return formatted_time
 
-def make_figures(dir_device, action, tin, Vin, t, V, I):
-    
+def make_figures(dir_device, action, tin, Vin, t, V, I, t_filt, V_filt , I_filt):
+    I_offset=np.mean(I[-1])
     fig, ax = plt.subplots(2,2)
     ax[0,0].plot(tin, Vin)
     ax[0,0].set_title(' Voltage in')
     ax[0,1].plot(t[-1], V[-1])
-    ax[0,1].plot(t[-1],I[-1]*0.5e4)
+    ax[0,1].plot(t[-1],(I[-1]-I_offset)/max((I[-1]-I_offset))*max(V[-1])*0.6)
     ax[0,1].set_title('Voltage monitored, Filt. Current')
     ax[1,0].plot(t[-1], I[-1])
     ax[1,0].set_title('Current')
-    ax[1,1].plot(t[-1],I[-1])
+    ax[1,1].plot(t_filt[-1],I_filt[-1])
     ax[1,1].set_title('Filtered Current')
     fig.set_figheight(6)
     fig.set_figwidth(9)

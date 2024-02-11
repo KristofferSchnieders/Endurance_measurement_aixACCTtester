@@ -328,7 +328,7 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2):
                 states.append(state)
                     
 
-    return R_states, state
+    return np.array(R_states), np.array(state)
 
 
 #####################################################################

@@ -73,7 +73,8 @@ def bool_states(interval_LRS, interval_HRS):
             return 0
     return bool_LRS, bool_HRS
 
-def bool_switched(R_LRS, R_HRS, bool_LRS, bool_HRS): 
+def bool_switched(R, states, bool_LRS, bool_HRS):
+    R_HRS, R_LRS = R[states=='HRS'], R[states=='LRS']
     HRS_switched, LRS_switched = bool_HRS(R_HRS), bool_LRS(R_LRS)
     min_len_switched = np.min([len(HRS_switched), len(LRS_switched)])
     if len(HRS_switched)!=len(LRS_switched):

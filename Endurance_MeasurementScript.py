@@ -171,10 +171,10 @@ try:
                       df_endurance=None)
         
         # Verify if forming successful
-        bool_formed = bool_switched(R_states[0], R_states[1], bool_LRS, bool_HRS)
+        nr_pulse_switched = sum(bool_switched(R_states, states, bool_LRS, bool_HRS))
         
         # If the device is not formed, we go on.
-        if not bool_formed:
+        if nr_pulse_switched>0:
             continue
         else:
             n_switch=1
@@ -209,7 +209,7 @@ try:
         
         
         # Verify if forming successful
-        nr_sweep_switched = sum([bool_switched(R_states[i*2], R_states[i*2+1], bool_LRS, bool_HRS) for i in range(int(len(R_states)/4))])
+        nr_pulse_switched = sum(bool_switched(R_states, states, bool_LRS, bool_HRS))
         if nr_sweep_switched<=nr_presweeps*0.8:
             continue
         else:
@@ -269,11 +269,11 @@ try:
                           df_endurance=df_endurance)
             
             # Verify if forming successful
-            nr_pulse_switched = sum([bool_switched(R_states[i*2], R_states[i*2+1], bool_LRS, bool_HRS) for i in range(int(len(R_states)/4))])
+            nr_pulse_switched = sum(bool_switched(R_states, states, bool_LRS, bool_HRS))
             if nr_pulse_switched<=nr_rep*0.8:
                 bool_device_working=False
             else:
-                n_switch+=(nr_pulse_switched+n_dummy)*(nr_pulse_switched/nr_rep)
+                n_switch+=nr_pulse_switched+(n_dummy)*(nr_pulse_switched/nr_rep)
             
             if n_switch>counter_sweep:
                 ###############################################################

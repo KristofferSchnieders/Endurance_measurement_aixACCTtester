@@ -87,7 +87,7 @@ cc_ps, cc_ns = 0.2, -2 # mA
 gain_sweep = Gain.LOW
 
 # Parameters pulses
-t_break_pulse, t_set_pulse, t_reset_pulse, t_pulse_read = 10e-9, 1e-6, 5e-6, 5e-6 # s
+t_break_pulse, t_set_pulse, t_reset_pulse, t_pulse_read = 10e-9, 0.5e-6, 2e-6, 3e-6 # s
 V_pulse_set, V_pulse_reset, V_pulse_read = 1.5, -1.5, 0.2 # V
 V_pulse_gate = [0, 0, 0]
 cc_pp, cc_np = 0.15, -2 # mA
@@ -253,7 +253,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
                                                             t_read=t_pulse_read,
                                                             V_gate=V_pulse_gate,
                                                             t_break=t_break_pulse, 
-                                                            n_rep=int(nr_meas) if int(nr_meas)<10  else 10,
+                                                            n_rep=int(nr_meas) if int(nr_meas)<10  else 100,
                                                             step_size=t_break_pulse,
                                                             gain=gain_pulse, 
                                                             bool_read=True, 
@@ -274,6 +274,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
             bool_device_working=False
         else:
             n_switch+=nr_pulse_switched+(n_dummy)*(nr_pulse_switched/nr_rep)
+            id_nr+=1
         
         if n_switch>counter_sweep:
             ###############################################################

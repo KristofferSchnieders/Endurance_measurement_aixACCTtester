@@ -121,7 +121,7 @@ def routine_IV_sweep(cassini,
     wf_V = np.array([0, 0, V_set, 0, 0,
                       V_reset,0,0])
     
-    wf_t = np.array([0, t_break, t_set , t_set, step_size*10,
+    wf_t = np.array([0, step_size*20, t_break, t_set , t_set, step_size*10,
                t_reset, t_reset, t_break])
     wf_t = round_base(wf_t, step_size)
 

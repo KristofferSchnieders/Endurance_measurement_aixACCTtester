@@ -130,11 +130,11 @@ def filter_data(I, V, t, Nmean=5):
     '''
     I_filt, V_filt, t_filt = list(), list(), list()
     for i, dummy_I in enumerate(I):
-        I_offset = np.mean(I[i][-20:])
+        I_offset = np.mean(I[i][:10])
         I_filt_dummy=smooth_mean(I[i]-I_offset,N=2)
         I_filt.append(running_median(I_filt_dummy[Nmean:],n_runmed=4))
         
-        V_offset = np.mean(V[i][-20:])
+        V_offset = np.mean(V[i][:10])
         V_filt_dummy=smooth_mean(V[i]-V_offset,N=2)
 
         V_filt.append(running_median(V_filt_dummy[Nmean:],n_runmed=4))
@@ -278,16 +278,16 @@ def calc_R_pulse(I_filt, V_filt, V_read=0.2):
         Resistance of device.
 
     '''
-    R_states = []
+    R_states, states = [], []
     for i, I_f in enumerate(I_filt): 
-        if len(find_read_sections(np.where(np.logical_and(V_filt[i]>V_read-0.1,
-                                                                  V_filt[i]<V_read+0.1))[0],n=5,min_length=5))==2:
-            asdf
         for indices in find_read_sections(np.where(np.logical_and(V_filt[i]>V_read-0.1,
                                                                   V_filt[i]<V_read+0.1))[0],n=5,min_length=5):
+            sign_pulse = np.sign(V_filt[i][np.where(abs(V_filt[i][:indices[0]])>0.7)[0][-1]])
+            state = "HRS" if sign_pulse <0 else "LRS"
+            states.append(state)
             R_states.append(abs(np.mean(V_filt[i][indices[2:]]/I_filt[i][indices[2:]])))
 
-    return R_states
+    return R_states, states
 
 def calc_R_sweep(I_filt, V_filt, V_read=0.2):
     '''
@@ -308,20 +308,27 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2):
         Resistance of device.
 
     '''
-
-    R_states = []
+    
+    R_states, states = [], []
     for index_f, V_f in enumerate(V_filt):
-        for indices in find_read_sections(np.where(np.logical_and(abs(V_f)>V_read-0.1,
-                                                                abs(V_f)<V_read+0.1))[0]):
-            if (V_f[indices[0]]-V_f[indices[-1]])<0:
+        for index_sec, indices in enumerate(find_read_sections(np.where(np.logical_and(abs(V_f)>V_read-0.1,
+                                                                abs(V_f)<V_read+0.1))[0])):
+            if (abs(V_f[indices[0]])-abs(V_f[indices[-1]]))>0:
                 # There are different ways of calculating the resistnace
                 # Currently we prefer fitting to the Gerade, as we hope  to mitigate outlieres by this in the best way
+                plt.plot(V_f[indices], I_filt[index_f][indices], color='red')
+                state = "HRS" if V_f[indices[-1]] < 0 else "LRS"
                 if False:
                     R_states.append(abs(V_f[indices][0]-V_f[indices][-1])/abs(I_filt[index_f][indices[-1]])-I_filt[index_f][indices[0]])
+                    
                 else:
                     pol_fit = np.polyfit(V_f[indices], I_filt[index_f][indices], 1)
                     R_states.append(1/pol_fit[0])
-    return R_states
+                    
+                states.append(state)
+                    
+
+    return R_states, state
 
 
 #####################################################################
@@ -372,13 +379,14 @@ def main_eval(dir_device: str,
     I_filt, V_filt, t_filt = filter_data(I, V, t)
         
     if bool_sweep: 
-        R_states = calc_R_sweep(I_filt, V_filt, V_read=0.2)
+        R_states, states = calc_R_sweep(I_filt, V_filt, V_read=0.2)
     else: 
-        R_states = calc_R_pulse(I_filt, V_filt, V_read=0.2)
+        R_states, states = calc_R_pulse(I_filt, V_filt, V_read=0.2)
     
     if type(df_endurance) == type(None):
         df_endurance = bearcats.DataFrame([{'device': device_name,
                                 'R': R_states,
+                                "state": states,
                                 'datetime': datetime.now().timestamp(), 
                                 "measurement_path": measurement_path,
                                 "measurement_nr": measurement_nr,
@@ -387,7 +395,8 @@ def main_eval(dir_device: str,
     else: 
         df_endurance = bearcats.concat([df_endurance, 
                                         bearcats.DataFrame([{'device': device_name,
-                                        'R': R_states,
+                                       'R': R_states,
+                                       "state": states,
                                         'datetime': datetime.now().timestamp(), 
                                         "measurement_path": measurement_path,
                                         "measurement_nr": measurement_nr,
@@ -397,4 +406,4 @@ def main_eval(dir_device: str,
     # Make figure
     make_figures(dir_device, action, tin, Vin, t, V, I, t_filt, V_filt , I_filt)
     
-    return R_states, df_endurance
+    return R_states, df_endurance, states

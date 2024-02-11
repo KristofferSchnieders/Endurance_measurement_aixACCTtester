@@ -158,7 +158,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
                          cc_p=cc_ps)
 
     # Evaluate measurement 
-    R_states, df_endurance = main_eval(dir_device, 
+    R_states, df_endurance, states = main_eval(dir_device, 
                   measurement_path, 
                   measurement_nr, 
                   action, 
@@ -195,7 +195,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
                          cc_p=cc_ps)
     
     # Evaluate measurement 
-    R_states, df_endurance = main_eval(dir_device, 
+    R_states, df_endurance, states = main_eval(dir_device, 
                   measurement_path, 
                   measurement_nr, 
                   action, 
@@ -256,7 +256,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
                                                             cc_n=cc_np,
                                                             cc_p=cc_pp)
         # Evaluate measurement 
-        R_states, df_endurance = main_eval(dir_device, 
+        R_states, df_endurance, states = main_eval(dir_device, 
                       measurement_path, 
                       measurement_nr, 
                       action, 
@@ -292,7 +292,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
                                  cc_p=cc_ps)
             
             # Evaluate measurement 
-            R_states, df_endurance = main_eval(dir_device, 
+            R_states, df_endurance, states = main_eval(dir_device, 
                           measurement_path, 
                           measurement_nr, 
                           action, 

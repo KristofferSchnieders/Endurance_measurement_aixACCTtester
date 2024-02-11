@@ -75,13 +75,14 @@ def bool_states(interval_LRS, interval_HRS):
 
 def bool_switched(R, states, bool_LRS, bool_HRS):
     R_HRS, R_LRS = R[states=='HRS'], R[states=='LRS']
-    HRS_switched, LRS_switched = bool_HRS(R_HRS), bool_LRS(R_LRS)
+    HRS_switched, LRS_switched = np.array([bool_HRS(R) for R in R_HRS]), np.array([bool_LRS(R) for R in R_LRS])
     min_len_switched = np.min([len(HRS_switched), len(LRS_switched)])
     if len(HRS_switched)!=len(LRS_switched):
         print("Have a look at data. The evaluation seems unstable.")
     
-    bool_switched = np.logical_and(HRS_switched[:min_len_switched], LRS_switched[:min_len_switched])
-    return bool_switched
+    bool_switched = np.logical_and(HRS_switched[:min_len_switched]==1,
+                                   LRS_switched[:min_len_switched]==1)
+    return bool_switched, [HRS_switched, LRS_switched]
 
 def send_msg(text):
     '''

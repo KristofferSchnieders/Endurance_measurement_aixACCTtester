@@ -51,17 +51,18 @@ def make_figures(dir_device, action, tin, Vin, t, V, I, t_filt, V_filt , I_filt)
     fig.tight_layout()
     fig.savefig(os.path.join(dir_device,  f"{action}_{'V_set='}{np.around(max(Vin),2)}_{'V_reset='}{np.around(min(Vin),2)}_{get_formatted_datetime()}.png"))
     
-def figure_endurance(df_endurance, device, dir_device):
-    R = np.concatenate(df_endurance.R)
-    R_LRS, R_HRS = R[::2], R[1::2]
+def figure_endurance(df_endurance, states, device, dir_device):
+    R, states = np.concatenate(df_endurance.R),  np.concatenate(df_endurance.state)
+    R_HRS, R_LRS = R[states=='HRS'], R[states=='LRS']
     
-    fig, ax = plt.subplots(2,2)
-    fig.scatter(np.arange(0,len(R_LRS))+1, R_LRS, color="blue", label=r"R$_{LRS}$")
-    fig.scatter(np.arange(0,len(R_HRS))+1, R_HRS, color="red", label=r"R$_{HRS}$")
-    fig.set_xlabel("Nr. switched")
-    fig.set_ylabel(r"Resistance / $\Omega$")
-    fig.set_Title(r"Results endurance "+ device)
-    fig.legend()
+    
+    fig, ax = plt.subplots()
+    ax.scatter(np.arange(0,len(R_LRS))+1, R_LRS, color="blue", label=r"R$_{LRS}$")
+    ax.scatter(np.arange(0,len(R_HRS))+1, R_HRS, color="red", label=r"R$_{HRS}$")
+    ax.set_xlabel("Nr. switched")
+    ax.set_ylabel(r"Resistance / $\Omega$")
+    ax.set_title(r"Results endurance "+ device)
+    ax.legend()
     fig.tight_layout()
     fig.savefig(os.path.join(dir_device,  f"Endurance_device_{device}_{get_formatted_datetime()}.png"))
     

@@ -286,7 +286,8 @@ def calc_R_pulse(I_filt, V_filt, V_read=0.2):
             state = "HRS" if sign_pulse <0 else "LRS"
             states.append(state)
             R_states.append(abs(np.mean(V_filt[i][indices[2:]]/I_filt[i][indices[2:]])))
-
+    R_states, states = np.array(R_states), np.array(states)
+    R_states[R_states>2e5] = 2e5
     return R_states, states
 
 def calc_R_sweep(I_filt, V_filt, V_read=0.2):
@@ -316,19 +317,18 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2):
             if (abs(V_f[indices[0]])-abs(V_f[indices[-1]]))>0:
                 # There are different ways of calculating the resistnace
                 # Currently we prefer fitting to the Gerade, as we hope  to mitigate outlieres by this in the best way
-                plt.plot(V_f[indices], I_filt[index_f][indices], color='red')
                 state = "HRS" if V_f[indices[-1]] < 0 else "LRS"
                 if False:
                     R_states.append(abs(V_f[indices][0]-V_f[indices][-1])/abs(I_filt[index_f][indices[-1]])-I_filt[index_f][indices[0]])
                     
                 else:
                     pol_fit = np.polyfit(V_f[indices], I_filt[index_f][indices], 1)
-                    R_states.append(1/pol_fit[0])
+                    states.append(state)
+                    R_states.append(abs(1/pol_fit[0]))
                     
-                states.append(state)
-                    
-
-    return np.array(R_states), np.array(state)
+    R_states, states = np.array(R_states), np.array(states)
+    R_states[R_states>2e5] = 2e5
+    return R_states, states
 
 
 #####################################################################

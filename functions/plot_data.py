@@ -31,7 +31,7 @@ def get_formatted_datetime():
 
     '''
     current_time = datetime.now()
-    formatted_time = current_time.strftime('%Y_%m_%d_%H_%M')
+    formatted_time = current_time.strftime('%Y_%m_%d_%H_%M_%S')
     return formatted_time
 
 def make_figures(dir_device, action, tin, Vin, t, V, I, t_filt, V_filt , I_filt):
@@ -50,6 +50,7 @@ def make_figures(dir_device, action, tin, Vin, t, V, I, t_filt, V_filt , I_filt)
     fig.set_figwidth(9)
     fig.tight_layout()
     fig.savefig(os.path.join(dir_device,  f"{action}_{'V_set='}{np.around(max(Vin),2)}_{'V_reset='}{np.around(min(Vin),2)}_{get_formatted_datetime()}.png"))
+    plt.close(fig)
     
 def figure_endurance(df_endurance, states, device, dir_device):
     R, states = np.concatenate(df_endurance.R),  np.concatenate(df_endurance.state)
@@ -65,4 +66,4 @@ def figure_endurance(df_endurance, states, device, dir_device):
     ax.legend()
     fig.tight_layout()
     fig.savefig(os.path.join(dir_device,  f"Endurance_device_{device}_{get_formatted_datetime()}.png"))
-    
+    plt.close(fig)

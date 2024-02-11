@@ -158,7 +158,7 @@ def get_formatted_datetime():
 
     '''
     current_time = datetime.now()
-    formatted_time = current_time.strftime('%Y_%m_%d_%H_%M')
+    formatted_time = current_time.strftime('%Y_%m_%d_%H_%M_%S')
     return formatted_time
 
 #####################################################################

@@ -220,7 +220,12 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
     ###############################################################
     bool_device_working, id_nr, counter_sweep = True, 0, 100
     while bool_device_working:
-        nr_meas = nr_meas_endurance[id_nr]
+        
+        # Unsafe way to limit the number of pulses to the maximal number in the list
+        try:
+            nr_meas = nr_meas_endurance[id_nr]
+        except:
+            pass
         n_dummy=0
         # Currently not working
         if nr_meas >10 and False: 
@@ -307,7 +312,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
             
             
             # Verify if forming successful
-            nr_sweep_switched = sum([bool_switched(R_states[i*4+1], R_states[i*4+3], bool_LRS, bool_HRS) for i in range(int(len(R_states)/4))])
+            nr_sweep_switched = sum(bool_switched(R_states, states, bool_LRS, bool_HRS)[0])
 
             n_switch+=nr_sweep_switched
     

@@ -5,6 +5,7 @@ Created on Sun Jan 14 13:06:24 2024
 @author: schnieders
 """
 import numpy as np
+import requests
 
 def bool_states(interval_LRS, interval_HRS):
     '''
@@ -74,3 +75,23 @@ def bool_states(interval_LRS, interval_HRS):
 
 def bool_switched(R_LRS, R_HRS, bool_LRS, bool_HRS): 
     return np.logical_and(bool_LRS(R_LRS), bool_HRS(R_HRS))
+
+def send_msg(text):
+    '''
+    Send message over Telegram
+
+    Parameters
+    ----------
+    text : str
+        Text you want to send to yourself.
+
+    Returns
+    -------
+    None.
+
+    '''
+    token = "5697756678:AAEjgVl7IDwsNAUBnBdyn_S1KsqQXWr7ytA"
+    chat_id = "848875578"
+    url_req = r'https://api.telegram.org/bot' + token + "/sendMessage" + "?chat_id=" + chat_id + "&text=" + text
+    results = requests.get(url_req)
+    print(results.json())

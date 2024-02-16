@@ -17,7 +17,7 @@ from plot_data import *
 
 
 # Read the measured data
-def read_data(measurement_path: str, measurement_nr: int):
+def read_data(measurement_path: str, measurement_nr: int, bool_not1T1R=True):
     '''
     Read data from HDF5
 
@@ -42,14 +42,29 @@ def read_data(measurement_path: str, measurement_nr: int):
         Measure current / A.
 
     '''
-    with h5py.File(measurement_path ,"r") as f:
-        tin =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge02"][0])
-        Vin =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge02"][1])
-        tread = np.array([t[0] for t in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge02"])])
-        Vread = np.array([I[1] for I in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge02"])])
-        Iread = np.array([V[1] for V in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge03"])])
- 
-    return tin, Vin, tread, Vread, Iread
+    if bool_not1T1R:
+        with h5py.File(measurement_path ,"r") as f:
+            tin =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge02"][0])
+            Vin =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge02"][1])
+            tread = np.array([t[0] for t in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge02"])])
+            Vread = np.array([V[1] for V in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge02"])])
+            Iread = np.array([I[1] for I in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge03"])])
+    else:
+        V_in_src =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge01"])
+        V_in_drain =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge03"])
+        V_in_gate =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge04"])
+        
+        Iread =-np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge03"])[0]
+        
+        Vgate = np.interp(Iread[0],V_in_gate[0],V_in_gate[1])
+        Vsrc = np.interp(Iread[0],V_in_src[0],V_in_src[1])
+        Vdrain = np.interp(Iread[0],V_in_drain[0],V_in_drain[1])
+        Vread = Vsrc - Vdrain
+
+    if bool_not1T1R:
+        return tin, Vin, tread, Vread, Iread
+    else: 
+        return tin, Vin, tread, Vread, Iread, Vgate
 
 def smooth_mean(x, N=10):
     '''

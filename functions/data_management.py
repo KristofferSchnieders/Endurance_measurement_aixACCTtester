@@ -7,13 +7,17 @@ Created on Sun Jan 14 13:07:56 2024
 
 import numpy as np 
 import h5py
-import datetime
+from datetime import datetime
 import pandas as bearcats
 import os
+import sys 
+
+sys.path.append(r"D:\Scripts\Schnieders\Endurance_measurement_aixACCTtester\functions")
+from plot_data import *
 
 
 # Read the measured data
-def read_data(measurement_path: str, measurement_nr: int):
+def read_data(measurement_path: str, measurement_nr: int, bool_not1T1R=True):
     '''
     Read data from HDF5
 
@@ -38,14 +42,59 @@ def read_data(measurement_path: str, measurement_nr: int):
         Measure current / A.
 
     '''
-    with h5py.File(measurement_path ,"r") as f:
-        tin =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge02"][0])
-        Vin =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge02"][1])
-        tread = np.array([t[0] for t in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge02"])])
-        Vread = np.array([I[1] for I in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge02"])])
-        Iread = np.array([V[1] for V in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge03"])])
- 
-    return tin, Vin, tread, Vread, Iread
+    if bool_not1T1R:
+        with h5py.File(measurement_path ,"r") as f:
+            tin =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge02"][0])
+            Vin =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge02"][1])
+            tread = np.array([t[0] for t in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge02"])])
+            Vread = np.array([V[1] for V in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge02"])])
+            Iread = np.array([I[1] for I in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge03"])])
+    else:
+        V_in_src =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge01"])
+        V_in_drain =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge03"])
+        V_in_gate =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge04"])
+        
+        Iread =-np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge03"])[0]
+        
+        Vgate = np.interp(Iread[0],V_in_gate[0],V_in_gate[1])
+        Vsrc = np.interp(Iread[0],V_in_src[0],V_in_src[1])
+        Vdrain = np.interp(Iread[0],V_in_drain[0],V_in_drain[1])
+        Vread = Vsrc - Vdrain
+
+    if bool_not1T1R:
+        return tin, Vin, tread, Vread, Iread
+    else: 
+        return tin, Vin, tread, Vread, Iread, Vgate
+
+def smooth_mean(x, N=10):
+    '''
+    We want to smooth the data. Due to floating point errors, we have to cannot do this with cumsum
+    Parameters:
+    ----------
+        x: array like
+            Data  to be smoothed 
+        N: int
+            Number of datapoints to average over
+    Returns:
+   ----------
+        smoothedList: array like
+            Smoothed data
+    '''
+    smoothList = list()
+    lenx = len(x)/1000
+    if lenx > 1000:
+        for id_smooth in range(1000): 
+            cumsum = np.cumsum(x[int(id_smooth*lenx): np.min([int((1+id_smooth)*lenx), len(x)-1])])
+            if id_smooth == 0: 
+                smoothList = smoothList + list((cumsum[N::N]-cumsum[:-N:N]) / N)
+            else: 
+                smoothList = smoothList + list((cumsum[N::N]-cumsum[:-N:N]) / N)
+            
+    else:
+        cumsum = np.cumsum(x)
+        smoothList = (cumsum[N::N]-cumsum[:-N:N]) / N
+
+    return np.array(smoothList)
 
 def running_median(data, n_runmed=10):
     '''
@@ -67,7 +116,13 @@ def running_median(data, n_runmed=10):
     return np.array([np.median(data[index:(index+n_runmed)]) for index in
                      range(len(data))])
 
-
+def get_states(Vin, Vread=0.2):
+    states= list()
+    for i, v_in in enumerate(Vin[:-1]):
+        if v_in==0 and Vin[i+1]==Vread:
+            Vpulse = Vin[i-4:i][np.argmax(abs(Vin[i-4:i]))]
+            states.append('LRS' if Vpulse>0 else 'HRS')
+    return states
 # Main function for filtering of data
 def filter_data(I, V, t, Nmean=5):
     '''
@@ -94,17 +149,18 @@ def filter_data(I, V, t, Nmean=5):
         filtered time / s 
 
     '''
+    N_smooth = 2
     I_filt, V_filt, t_filt = list(), list(), list()
-    for i, dummmy_I in enumerate(I):
-        I_offset = np.mean(I[i][-100:])
-        I_filt_dummy=running_median(I[i]-I_offset)
-        I_filt=I_filt.append((np.cumsum(I_filt_dummy[Nmean:])-np.cumsum(I_filt_dummy[:-Nmean]))/Nmean)
+    for i, dummy_I in enumerate(I):
+        I_offset = np.mean(I[i][:10]) if abs(np.mean(I[i][:10]))<5e-5 else -4e-5 #np.mean(I[i][:10])
+        I_filt_dummy=smooth_mean(I[i]-I_offset,N=N_smooth)
+        I_filt.append(running_median(I_filt_dummy[Nmean:],n_runmed=4))
         
-        V_offset = np.mean(V[i][-100:])
-        V_filt_dummy=running_median(V[i]-V_offset)
-        V_filt=V_filt.append((np.cumsum(V_filt_dummy[Nmean:])-np.cumsum(V_filt_dummy[:-Nmean]))/Nmean)
-        
-        t_filt=t_filt.append(t[i][3:len(I_filt_dummy)+3])
+        V_offset = 0 #np.mean(V[i][-10:])
+        V_filt_dummy=smooth_mean(V[i]-V_offset,N=N_smooth)
+
+        V_filt.append(running_median(V_filt_dummy[Nmean:],n_runmed=4))
+        t_filt.append(np.linspace(0,max(t[i]), len(V_filt[-1])))
 
     return I_filt, V_filt, t_filt
 
@@ -123,7 +179,7 @@ def get_formatted_datetime():
 
     '''
     current_time = datetime.now()
-    formatted_time = current_time.strftime('%Y_%m_%d_%H_%M')
+    formatted_time = current_time.strftime('%Y_%m_%d_%H_%M_%S')
     return formatted_time
 
 #####################################################################
@@ -146,7 +202,7 @@ def load_raw_data_and_store(measurement_path,
         Number of measurement.
     action : str
         Identifier for kind of measurement. 
-    id_site : int
+    id_site : inta
         Identifier of current device. (Only reasonable if combined with wafermap.)
     dir_data_save : str, optional
         Dir. in which we want to store the data. The default is r"\\iff1690.iff.kfa-juelich.de\data2\Data\Schnieders\Endurance\cute_cat".
@@ -180,9 +236,9 @@ def load_raw_data_and_store(measurement_path,
                             "measurement_path": measurement_path,
                             "measurement_nr": measurement_nr,
                             "action": action
-                                }])
-
-    filename_pkl = f"{action}_{'V_set='}{np.around(max(V),2)}_{'V_reset='}{np.around(min(V),2)}_{get_formatted_datetime()}.pkl"
+                            }])
+    
+    filename_pkl = f"{action}_{'V_set='}{np.around(max(V[0]),2)}_{'V_V_reset='}{np.around(min(V[0]),2)}_V_{get_formatted_datetime()}.pkl"
     
     data.to_pickle(os.path.join(dir_data_save, filename_pkl))
     return tin, Vin, t, V, I
@@ -192,7 +248,7 @@ def load_raw_data_and_store(measurement_path,
 #  Find read sections
 ###############################
 # Find read sections
-def find_read_sections(read_indices, n = 20, min_length = 50):
+def find_read_sections(read_indices, n = 10, min_length = 10):
     '''
     Find sections in which read voltage is applied.
 
@@ -224,7 +280,7 @@ def find_read_sections(read_indices, n = 20, min_length = 50):
 ## Calculate and save Resistance
 #####################################################################    
 
-def calc_R_pulse(I_filt, V_filt, V_read=0.2):
+def calc_R_pulse(I_filt, V_filt, V_read=0.2, tin=[0, 1e-6], Vin=[0.2, 0.2], diff_t=1e-9):
     '''
     Calculate resistance in pulse by absolute amplitude.
 
@@ -243,12 +299,19 @@ def calc_R_pulse(I_filt, V_filt, V_read=0.2):
         Resistance of device.
 
     '''
-    R_states = []
-    for i in I_filt: 
-        for indices in find_read_sections(np.where(np.logical_and(abs(V_filt[i])>V_read-0.05,
-                                                                  abs(V_filt[i])<V_read+0.05))[0]):
-            R_states = R_states.append(np.mean(V_filt[i][indices]/I_filt[i][indices]))
-    return R_states
+    R_states, states = [], []
+    len_read = (tin[np.where(Vin==0.2)[0][1]]-tin[np.where(Vin==0.2)[0][0]])/(diff_t*5)
+    for i, I_f in enumerate(I_filt): 
+        segments = find_read_sections(np.where(np.logical_and(V_filt[i]>V_read-0.1,V_filt[i]<V_read+0.1))[0],n=20,min_length=10)
+        segments = [seg for seg in segments if len(seg)>len_read]  
+        if np.mod(len(segments),2) ==0:  
+            state_wf = get_states(Vin, Vread=0.2)
+            for j, indices in enumerate(segments):
+                R_states.append(abs(np.mean(V_filt[i][indices[2:]]/I_filt[i][indices[2:]])))
+                states = states + [state_wf[j]]     
+    R_states, states = np.array(R_states), np.array(states)
+    R_states[R_states>2e5] = 2e5
+    return R_states, states
 
 def calc_R_sweep(I_filt, V_filt, V_read=0.2):
     '''
@@ -269,12 +332,29 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2):
         Resistance of device.
 
     '''
+    
 
-    R_states = []
-    for indices in find_read_sections(np.where(np.logical_and(abs(V_filt)>V_read-0.1,
-                                                              abs(V_filt)<V_read+0.1))[0]):
-        R_states = R_states.append(abs(max(V_filt[indices])-min(V_filt[indices]))/abs(max(I_filt[indices])-min(I_filt[indices])))
-    return R_states
+    R_states, states = [], []
+    for index_f, V_f in enumerate(V_filt):
+        for index_sec, indices in enumerate(find_read_sections(np.where(np.logical_and(abs(V_f)>V_read-0.1,
+                                                                abs(V_f)<V_read+0.1))[0], n=20)):
+            if (abs(V_f[indices[0]]-V_f[indices[-1]])>0.1) and (V_f[indices[-1]]<-0.05):
+                
+                # There are different ways of calculating the resistnace
+                # Currently we prefer fitting to the Gerade, as we hope  to mitigate outlieres by this in the best way
+                state = "HRS" if abs(V_f[indices[0]])-abs(V_f[indices[-1]])>0.1 else "LRS"
+                if False:
+                    R_states.append(abs(V_f[indices][0]-V_f[indices][-1])/abs(I_filt[index_f][indices[-1]])-I_filt[index_f][indices[0]])
+                    
+                else:
+                    pol_fit = np.polyfit(V_f[indices], I_filt[index_f][indices], 1)
+                    states.append(state)
+                    R_states.append(abs(1/pol_fit[0]))
+                    
+    R_states, states = np.array(R_states), np.array(states)
+    R_states[R_states>2e5] = 2e5
+    return R_states, states
+
 
 #####################################################################
 ## Combined Eval. fct.
@@ -285,7 +365,8 @@ def main_eval(dir_device: str,
               measurement_nr: int, 
               action: str, 
               device_name: str, 
-              bool_sweep=True):
+              bool_sweep=True,
+              df_endurance=None):
     '''
     Use all functions for evaluating the data
 
@@ -303,6 +384,10 @@ def main_eval(dir_device: str,
         Name of device site.
     bool_sweep : bool, optional
         Sweep or not. The default is True.
+    df_endureance : DataFrame, optional
+        Dataframe, in which the resistance is stored. 
+        If Pandas df is received, the new R values are added. Otherwise, 
+        a new dataframe is initialized. 
 
     Returns
     -------
@@ -319,8 +404,31 @@ def main_eval(dir_device: str,
     I_filt, V_filt, t_filt = filter_data(I, V, t)
         
     if bool_sweep: 
-        R_states = calc_R_sweep(I_filt, V_filt, V_read=0.2)
+        R_states, states = calc_R_sweep(I_filt, V_filt, V_read=0.2)
     else: 
-        R_states = calc_R_pulse(I_filt, V_filt, V_read=0.2)
+        R_states, states = calc_R_pulse(I_filt, V_filt, V_read=0.2,tin=tin, Vin=Vin, diff_t=np.diff(t[0][:100])[-1])
     
-    return R_states
+    if type(df_endurance) == type(None):
+        df_endurance = bearcats.DataFrame([{'device': device_name,
+                                'R': R_states,
+                                "state": states,
+                                'datetime': datetime.now().timestamp(), 
+                                "measurement_path": measurement_path,
+                                "measurement_nr": measurement_nr,
+                                "action": action
+                                }])
+    else: 
+        df_endurance = bearcats.concat([df_endurance, 
+                                        bearcats.DataFrame([{'device': device_name,
+                                       'R': R_states,
+                                       "state": states,
+                                        'datetime': datetime.now().timestamp(), 
+                                        "measurement_path": measurement_path,
+                                        "measurement_nr": measurement_nr,
+                                        "action": action
+                                        }])], ignore_index = True)
+    
+    # Make figure
+    make_figures(dir_device, action, tin, Vin, t, V, I, t_filt, V_filt , I_filt)
+    
+    return R_states, df_endurance, states

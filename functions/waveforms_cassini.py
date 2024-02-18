@@ -4,7 +4,7 @@ Created on Sun Jan 14 12:52:59 2024
 
 @author: schnieders
 """
-
+import pandas as pd
 
 ## Communication with setup
 from cassini.system import CassiniSystem
@@ -17,10 +17,48 @@ import numpy as np
 
 import sys 
 
+import copy
+
 sys.path.append("DIR with scripts")
 from data_management import *
 from algo_management import bool_states
 
+# Here, we still have a security gap to the real maximum.
+MAX_DATAPOINTS_AITESTER = 70e3
+
+def round_base(wf_t, step_size:float):
+    '''
+    Function for rounding to the stepsize
+
+    Parameters
+    ----------
+    wf_t: array like 
+        time vector that has to be rounded
+    step_size: float 
+        Base of rounding
+    Returns
+    -------
+    new_wf_t: array like
+        Time vector rounded according to  stepsize. 
+        If time vector fine, this step also works.
+    '''
+    delta_wf_t = np.ceil(wf_t/step_size)
+    wf_t = np.array([int(t) if int(t) > 0 else 1 for t in delta_wf_t])
+    wf_t[0] = 0
+    return np.cumsum(step_size * np.round(wf_t))
+
+
+def add_wf_df(df_wf, name_wf, list_wf,t_max, nr_rep):
+    dict_wf={"name":name_wf,
+            'wf':list_wf,
+            't_max':t_max,
+            'nr_rep': nr_rep
+            }
+    if type(df_wf) == type(None):
+        df_wf = pd.DataFrame([dict_wf])
+    else: 
+        df_wf = pd.concat([df_wf,pd.DataFrame([dict_wf])], ignore_index = True)
+    return df_wf 
 
 
 #####################################################################
@@ -31,15 +69,18 @@ from algo_management import bool_states
 def routine_IV_sweep(cassini, 
                      V_set:float, 
                      V_reset:float, 
-                     cycle:int, 
-                     rate_sweep:float,
+                     cycle=1, 
+                     rate_sweep=1e3,
                      V_gate=[0,0],
                      t_break=1e-7, 
                      n_rep=1,
                      step_size=1e-9,
                      gain=Gain.HIGH, 
                      cc_n=-2,
-                     cc_p=2):
+                     cc_p=2,
+                     probe_switch=ProbeSwitch.SAMPLE,
+                     df_wf=None
+                     ):
     '''
     Function performing sweeps
 
@@ -82,76 +123,128 @@ def routine_IV_sweep(cassini,
         Number of current measurement.
 
     '''
-    # make sure that only one wf applied
+    cycle = cycle if  cycle < 10 else 10
     cassini.set_cycle(cycle)
+    step_size = 2**np.round(np.log2(step_size*1e9))*1e-9
+    # We have to assure that step size is following the form: 2**n * 1e-9, n in natural numbers
+    # We round the stepsize down to the next value to the form above.
+    name_wf = f'wf_sweep_Vset_{int(V_set*1e3)}mV_Vreset_{int(V_reset*1e3)}mV_rep_{int(n_rep)}_'
+    name_wf = name_wf + '1R' if np.sum(V_gate)==0 else name_wf + '1T1R'
+    if sum(name_wf==df_wf.name)==0:
+        # make sure that only one wf applied
 
-    t_set, t_reset = V_set/rate_sweep, V_reset/rate_sweep
-    #define waveform
-    wf_t = [0, t_break, t_set , t_set, step_size,
-               t_reset, t_reset, t_break]
-    wf_t = np.round(np.cumsum(wf_t),9)
-    
-    wf_V = np.array([0, 0, V_set, 0,
-                      V_reset,0,0])
-    if sum(V_gate)>0:
-        wf_gate = np.array([0, V_gate[0], V_gate[0], V_gate[0], V_gate[1],
-                      V_gate[1],V_gate[1],0])
-    
-    if n_rep < 1:
-        wf_t_init, wf_V_init, wf_gate_init = wf_t, wf_V, wf_gate
+
+        t_set, t_reset = abs(V_set/rate_sweep), abs(V_reset/rate_sweep)
+        #define waveform
+        wf_V = np.array([0, 0, V_set, 0, 0,
+                        V_reset,0,0])
+        
+        wf_t = np.array([0, step_size*50, t_set , t_set, step_size*10,
+                t_reset, t_reset, t_break])
+
+        # If we define a gate voltage apart from 0V, we also define a waveform for the gate
+        if sum(V_gate)>0:
+            wf_gate = np.array([0, V_gate[0], V_gate[0], V_gate[0], V_gate[1],
+                        V_gate[1],V_gate[1],0])
+        else:
+            wf_gate =  np.array([0,0,0])
         nr_rep = 1
-        while max(wf_t) < 18e3*step_size:
-            wf_t_temp = np.append(wf_t[:-1], wf_t_init[1:]+max(wf_t))
-            if wf_t_temp < 18e3*step_size: 
-                wf_t = wf_t_temp
-                wf_V = np.append(wf_V[:-1], wf_V_init[1:])
-                wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
-                nr_rep+=1
+        wf_t = round_base(wf_t, step_size)
+        # Concatenate the same waveform together
+        # If nr. of repetitions fixed, then concatenate this many. (If waveform not to long.)
+        if n_rep>1:
+            wf_t_init, wf_V_init, wf_gate_init = copy.deepcopy(wf_t), copy.deepcopy(wf_V), copy.deepcopy(wf_gate)
+            wf_t_temp = wf_t_init
+            wf_V_temp = wf_V_init
+            nr_rep = 1
+            for i in range(n_rep-1):
+                if max(wf_t_temp) < MAX_DATAPOINTS_AITESTER*step_size: 
+                    wf_t_temp = np.append(wf_t_temp[:-1], wf_t_init[1:])
+                    wf_V_temp = np.append(wf_V_temp[:-1], wf_V_init[1:])
+                    wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
+                    nr_rep+=1
+                wf_t, wf_V = wf_t_temp, wf_V_temp
+        # !!! Option to concatenate as many signals as possible. The number of !!! 
+        # !!! signals then is given out !!!
+        elif n_rep < 1:
+            wf_t_init, wf_V_init, wf_gate_init = copy.deepcopy(wf_t), copy.deepcopy(wf_V), copy.deepcopy(wf_gate)
+            wf_t_temp = wf_t_init
+            wf_V_temp = wf_V_init
+            nr_rep = 1
+            while max(wf_t_temp) < MAX_DATAPOINTS_AITESTER*step_size:
+                wf_t_temp = np.append(wf_t[:-1], wf_t_init[1:]+max(wf_t))
+                if max(wf_t_temp) < MAX_DATAPOINTS_AITESTER*step_size: 
+                    wf_t = wf_t_temp
+                    wf_V = np.append(wf_V[:-1], wf_V_init[1:])
+                    wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
+                    nr_rep+=1
+
+        t_max = max(wf_t)
+        # We have to load signals into different channels according to structure.
+        if sum(V_gate)==0:
+            # Define waveforms
+            waveform_iv_sweep = waveforms.Waveform(name_wf, np.array([wf_t, wf_V]),step_size=step_size)
+            waveform_ground   = waveforms.Waveform(name_wf+"ground", np.array([wf_t, wf_V*0]),step_size=step_size)
+            list_wf = [waveform_iv_sweep, waveform_ground]
+            
+        else:
+            wf_sorce = wf_V*(wf_V>0).astype(int)
+            wf_drain = abs(wf_V*(wf_V<0).astype(int))
+            waveform_iv_source = waveforms.Waveform(name_wf+"_source", np.array([wf_t, wf_sorce]),step_size=step_size)
+            waveform_bulk   = waveforms.Waveform(name_wf+"ground_bulk", np.array([wf_t, wf_V*0]),step_size=step_size)
+            waveform_iv_drain = waveforms.Waveform(name_wf+"_drain", np.array([wf_t, wf_drain]),step_size=step_size)
+            waveform_gate   = waveforms.Waveform(name_wf+"_gate", np.array([wf_t, wf_V*0]),step_size=step_size)
+            list_wf = [waveform_iv_source, waveform_bulk, waveform_iv_drain, waveform_gate]
+        df_wf = add_wf_df(df_wf, name_wf, list_wf, max(wf_t), nr_rep)
+    else: 
+        t_max = df_wf.t_max[np.where(name_wf==df_wf.name)[0][0]]
+        nr_rep = df_wf.nr_rep[np.where(name_wf==df_wf.name)[0][0]]
+        list_wf = df_wf.wf[np.where(name_wf==df_wf.name)[0][0]]
+        if sum(V_gate)==0:
+            # Define waveforms
+            [waveform_iv_sweep, waveform_ground] = list_wf
+            
+        else:
+            [waveform_iv_source, waveform_bulk, waveform_iv_drain, waveform_gate] = list_wf
+        
+    if sum(V_gate)==0:
+        cassini.set_waveform("wedge02", waveform=waveform_iv_sweep)
+        cassini.set_waveform("wedge03", waveform=waveform_ground)
+
+    else:
+        cassini.set_waveform("wedge01", waveform=waveform_iv_source)
+        cassini.set_waveform("wedge02", waveform=waveform_bulk)
+        cassini.set_waveform("wedge03", waveform=waveform_iv_drain)
+        cassini.set_waveform("wedge04", waveform=waveform_gate)
     # set probeboard parameters
     cassini.set_parameter_probeboard(gain=gain, ccn=cc_n, ccp=cc_p,
-                                     cc_deactivate=False)
-    
-    # Define waveforms
-    waveform_iv_sweep = waveforms.Waveform("sweep", np.array([wf_t, wf_V]),step_size=step_size)
-    waveform_ground   = waveforms.Waveform("ground", np.array([wf_t, wf_V*0]),step_size=step_size)
-    
-    if sum(V_gate)>0:
-        waveform_gate     = waveforms.Waveform("gate", np.array([wf_t, wf_gate]),step_size=step_size)
-
-
-    #Set DAs
-    cassini.set_waveform("wedge02", waveform=waveform_iv_sweep)
-    cassini.set_waveform("wedge03", waveform=waveform_ground)
-
-    if sum(V_gate)>0:
-        cassini.set_waveform("wedge01", waveform=waveform_ground)
-        cassini.set_waveform("wedge02", waveform=waveform_gate)
-        cassini.set_waveform("wedge03", waveform=waveform_iv_sweep)
-        cassini.set_waveform("wedge04", waveform=waveform_ground)
-
+                                     cc_deactivate=False,probe_switch=probe_switch)
 
     ## Set ADs
     # First pin
-    cassini.set_ad("wedge02", max(wf_t)*1.05, termination=True)
+    cassini.set_ad("wedge02", t_max*1.2, termination=True)
     # Second pin
-    cassini.set_ad("wedge03", max(wf_t)*1.05, termination=True)
+    cassini.set_ad("wedge03", t_max*1.2, termination=True)
 
     ## Set sampling rate
-    cassini.set_recording_samplerate(int(step_size))
+    print(int(step_size))
+    cassini.set_recording_samplerate(int(1/step_size))
     # Measurement
     measurement_path, measurement_nr = cassini.measurement()
 
-    return measurement_path, measurement_nr, nr_rep
+    nr_rep = n_rep*cycle
+
+    return measurement_path, measurement_nr, n_rep, df_wf
 
 # Pulses
 def routine_IV_pulse(cassini, 
-                     V_set: float, 
-                     V_reset: float,
-                     V_read: float,
-                     cycle: int, 
-                     t_set: float,
-                     t_reset: float,
-                     t_read: float,
+                     V_set=1, 
+                     V_reset=-1,
+                     V_read=0.2,
+                     cycle=1, 
+                     t_set=1e-8,
+                     t_reset=1e-8,
+                     t_read=1e-8,
                      V_gate=[0,0,0],
                      t_break=1e-7, 
                      n_rep=1,
@@ -159,7 +252,9 @@ def routine_IV_pulse(cassini,
                      gain=Gain.HIGH, 
                      bool_read=True, 
                      cc_n=-2,
-                     cc_p=2):
+                     cc_p=2,
+                     probe_switch=ProbeSwitch.SAMPLE,
+                     df_wf=None):
     '''
     
 
@@ -209,92 +304,141 @@ def routine_IV_pulse(cassini,
     measurement_nr : int
         Number of current measurement.
 
-
     '''
-    # make sure that only one wf applied
+    cycle = cycle if  cycle < 3 else 2
     cassini.set_cycle(cycle)
-
-
-    if bool_read: 
-        #define waveform
-        wf_t = [0, t_break, step_size, t_set, step_size,   # set
-                   t_break, step_size, t_set, step_size,   # read
-                   t_break, step_size, t_reset, step_size, # reset
-                   t_break, step_size, t_set, step_size,   # read
-                   t_break]
-        wf_t = np.round(np.cumsum(wf_t),9)
-        wf_V = np.array([0, V_set, V_set, 0,               # set
-                         0, V_read, V_read, 0,             # read
-                         0, V_reset, V_reset, 0,           # reset
-                         0, V_read, V_read, 0,             # read
-                         0])
-        if sum(V_gate)>0:
-            wf_gate = np.array([0, V_gate[0], V_gate[0], V_gate[0],
-                                V_gate[2], V_gate[2], V_gate[2], V_gate[2],
-                                V_gate[1], V_gate[1], V_gate[1], V_gate[1],
-                                V_gate[2], V_gate[2], V_gate[2], V_gate[2], 
-                                0])
-    else: 
-        #define waveform
-        wf_t = [0, t_break, step_size, t_set, step_size,   # set
-                   t_break, step_size, t_reset, step_size, # reset
-                   t_break]
-        wf_t = np.round(np.cumsum(wf_t),9)
-        wf_V = np.array([0, V_set, V_set, 0,               # set
-                         0, V_reset, V_reset, 0,           # reset
-                         0])
-        if sum(V_gate)>0:
-            wf_gate = np.array([0, V_gate[0], V_gate[0], V_gate[0],
-                                V_gate[1], V_gate[1], V_gate[1], V_gate[1], 
-                                0])
+    step_size = 2**np.round(np.log2(step_size*1e9))*1e-9
+    # We have to assure that step size is following the form: 2**n * 1e-9, n in natural numbers
+    # We round the stepsize down to the next value to the form above.
     
-    if n_rep < 1:
-        wf_t_init, wf_V_init, wf_gate_init = wf_t, wf_V, wf_gate
+    # make sure that only one wf applied
+
+    name_wf = 'wf_PulseRead_' if bool_read else 'wf_PulseNORead_'
+    name_wf = name_wf + f'Vset_{int(V_set*1e3)}mV_Vreset_{int(V_reset*1e3)}mV_tset_{int(t_set*1e9)}ns_treset_{int(t_reset*1e9)}ns_tread_{int(t_read*1e9)}ns_rep_{int(n_rep)}'
+    name_wf = name_wf + '_1R' if np.sum(V_gate)==0 else name_wf + '_1T1R'
+    if sum(name_wf==df_wf.name)==0:
+
+        if bool_read: 
+            #define waveform
+            wf_t = np.array([0, t_break*200, step_size, t_set, step_size,   # set
+                    t_break, step_size, t_read, step_size,   # read
+                    t_break, step_size, t_reset, step_size, # reset
+                    t_break, step_size, t_read, step_size,   # read
+                    t_break*200,t_break])
+            wf_t = np.round(wf_t,9)
+            wf_V = np.array([0, 0, V_set, V_set, 0,               # set
+                            0, V_read, V_read, 0,             # read
+                            0, V_reset, V_reset, 0,           # reset
+                            0, V_read, V_read, 0,             # read
+                            0,0])
+            if sum(V_gate)>0:
+                wf_gate = np.array([0, V_gate[0], V_gate[0], V_gate[0], V_gate[0],
+                                    V_gate[2], V_gate[2], V_gate[2], V_gate[2],
+                                    V_gate[1], V_gate[1], V_gate[1], V_gate[1],
+                                    V_gate[2], V_gate[2], V_gate[2], V_gate[2], 
+                                    0])
+            else:
+                wf_gate=np.array([0,0,0])
+        else: 
+            #define waveform
+            wf_t = [0, t_break, step_size, t_set, step_size,   # set
+                    t_break, step_size, t_reset, step_size, # reset
+                    t_break]
+            wf_t = round_base(wf_t, step_size)
+            wf_V = np.array([0, V_set, V_set, 0,               # set
+                            0, V_reset, V_reset, 0,           # reset
+                            0])
+            if sum(V_gate)>0:
+                wf_gate = np.array([0, V_gate[0], V_gate[0], V_gate[0],
+                                    V_gate[1], V_gate[1], V_gate[1], V_gate[1], 
+                                    0])
+
         nr_rep = 1
-        while max(wf_t) < 18e3*step_size:
-            wf_t_temp = np.append(wf_t[:-1], wf_t_init[1:]+max(wf_t))
-            if wf_t_temp < 18e3*step_size: 
-                wf_t = wf_t_temp
-                wf_V = np.append(wf_V[:-1], wf_V_init[1:])
-                wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
-                nr_rep+=1
+        wf_t = round_base(wf_t, step_size)        
+        # !!! Option to concatenate as many signals as possible. The number of !!! 
+        # !!! signals then is given out !!!
+        if n_rep>1:
+            wf_t_init, wf_V_init, wf_gate_init = copy.deepcopy(wf_t), copy.deepcopy(wf_V), copy.deepcopy(wf_gate)
+            wf_t_temp = wf_t_init
+            wf_V_temp = wf_V_init
+            nr_rep = 1
+            for i in range(n_rep-1):
+                if max(wf_t_temp) < MAX_DATAPOINTS_AITESTER*step_size: 
+                    wf_t_temp = np.append(wf_t_temp[:-1], wf_t_init[1:]+max(wf_t_temp))
+                    wf_V_temp = np.append(wf_V_temp[:-1], wf_V_init[1:])
+                    wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
+                    nr_rep+=1
+                wf_t, wf_V = wf_t_temp, wf_V_temp
+        # !!! Option to concatenate as many signals as possible. The number of !!! 
+        # !!! signals then is given out !!!
+        elif n_rep < 1:
+            wf_t_init, wf_V_init, wf_gate_init = copy.deepcopy(wf_t), copy.deepcopy(wf_V), copy.deepcopy(wf_gate)
+            wf_t_temp = wf_t_init
+            wf_V_temp = wf_V_init
+            nr_rep = 1
+            while max(wf_t_temp) < MAX_DATAPOINTS_AITESTER*step_size:
+                wf_t_temp = np.append(wf_t[:-1], wf_t_init[1:]+max(wf_t))
+                if max(wf_t_temp) < MAX_DATAPOINTS_AITESTER*step_size: 
+                    wf_t = wf_t_temp
+                    wf_V = np.append(wf_V[:-1], wf_V_init[1:])
+                    wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
+                    nr_rep+=1
+
+        t_max = max(wf_t)
+        if sum(V_gate)==0:
+            # Define waveforms
+            waveform_iv_sweep = waveforms.Waveform(name_wf, np.array([wf_t, wf_V]),step_size=step_size)
+            waveform_ground   = waveforms.Waveform(name_wf+"ground", np.array([wf_t, wf_V*0]),step_size=step_size)
+            list_wf = [waveform_iv_sweep, waveform_ground]
+            
+        else:
+            wf_sorce = wf_V*(wf_V>0).astype(int)
+            wf_drain = abs(wf_V*(wf_V<0).astype(int))
+            waveform_iv_source = waveforms.Waveform(name_wf+"_source", np.array([wf_t, wf_sorce]),step_size=step_size)
+            waveform_bulk   = waveforms.Waveform(name_wf+"ground_bulk", np.array([wf_t, wf_V*0]),step_size=step_size)
+            waveform_iv_drain = waveforms.Waveform(name_wf+"_drain", np.array([wf_t, wf_drain]),step_size=step_size)
+            waveform_gate   = waveforms.Waveform(name_wf+"_gate", np.array([wf_t, wf_V*0]),step_size=step_size)
+            list_wf = [waveform_iv_source, waveform_bulk, waveform_iv_drain, waveform_gate]
+        
+        df_wf = add_wf_df(df_wf, name_wf, list_wf, t_max, nr_rep)
+
+    else: 
+        t_max = df_wf.t_max[np.where(name_wf==df_wf.name)[0][0]]
+        nr_rep = df_wf.nr_rep[np.where(name_wf==df_wf.name)[0][0]]
+        list_wf = df_wf.wf[np.where(name_wf==df_wf.name)[0][0]]
+        if sum(V_gate)==0:
+            # Define waveforms
+            [waveform_iv_sweep, waveform_ground] = list_wf
+            
+        else:
+            [waveform_iv_source, waveform_bulk, waveform_iv_drain, waveform_gate] = list_wf
+            
+    if sum(V_gate)==0:
+        cassini.set_waveform("wedge02", waveform=waveform_iv_sweep)
+        cassini.set_waveform("wedge03", waveform=waveform_ground)
+
+    else:
+        cassini.set_waveform("wedge01", waveform=waveform_iv_source)
+        cassini.set_waveform("wedge02", waveform=waveform_bulk)
+        cassini.set_waveform("wedge03", waveform=waveform_iv_drain)
+        cassini.set_waveform("wedge04", waveform=waveform_gate)
     
     # set probeboard parameters
     cassini.set_parameter_probeboard(gain=gain, ccn=cc_n, ccp=cc_p,
-                                     cc_deactivate=False)
-    
-    # Define waveforms
-    waveform_iv_sweep = waveforms.Waveform("sweep", np.array([wf_t, wf_V]),step_size=step_size)
-    waveform_ground   = waveforms.Waveform("ground", np.array([wf_t, wf_V*0]),step_size=step_size)
-    
-    if sum(V_gate)>0:
-        waveform_gate     = waveforms.Waveform("gate", np.array([wf_t, wf_gate]),step_size=step_size)
-
-
-    #Set DAs
-    cassini.set_waveform("wedge02", waveform=waveform_iv_sweep)
-    cassini.set_waveform("wedge03", waveform=waveform_ground)
-
-    if sum(V_gate)>0:
-        cassini.set_waveform("wedge01", waveform=waveform_ground)
-        cassini.set_waveform("wedge02", waveform=waveform_gate)
-        cassini.set_waveform("wedge03", waveform=waveform_iv_sweep)
-        cassini.set_waveform("wedge04", waveform=waveform_ground)
-
-    # set probeboard parameters
-    cassini.set_parameter_probeboard(gain=gain, ccn=cc_n, ccp=cc_p,
-                                     cc_deactivate=False)
+                                        cc_deactivate=False,probe_switch=probe_switch)
 
     ## Set ADs
     # First pin
-    cassini.set_ad("wedge02", max(wf_t)*1.05, termination=True)
+    cassini.set_ad("wedge02", t_max*1.2, termination=True)
     # Second pin
-    cassini.set_ad("wedge03", max(wf_t)*1.05, termination=True)
+    cassini.set_ad("wedge03", t_max*1.2, termination=True)
 
     ## Set sampling rate
-    cassini.set_recording_samplerate(int(step_size))
+    cassini.set_recording_samplerate(int(1/step_size))
     # Measurement
     measurement_path, measurement_nr = cassini.measurement()
 
-    return measurement_path, measurement_nr, nr_rep
+    nr_rep = nr_rep*cycle
+
+    return measurement_path, measurement_nr, nr_rep,df_wf
 

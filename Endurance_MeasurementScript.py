@@ -55,7 +55,7 @@ df_wf = add_wf_df(None, 'Dummy', ['wf1', 'wf2'], 1, 0)
 
 # Define resistive states
 interval_LRS = np.array([0.1, 10])*1e3
-interval_HRS = np.array([15, 2e5])*1e3
+interval_HRS = np.array([15, 2e6])*1e3
 
 # Specify sample
 sample_layout = "Neurotec1_1R"
@@ -64,7 +64,7 @@ sample_name = 'Die_43'
 measurement= 'Endurance' + sample_layout
 
 # Save direction
-save_dir = os.path.join(r"D:\Data\Schnieders\Endurance" ,
+save_dir = os.path.join(r"D:\Data\Schnieders\Endurancesweep" ,
                         sample_layout, sample_material, sample_name, '_'.join(get_formatted_datetime().split('_')[:-3]))
 
 # TODO: Check, if 1R or 1T1R
@@ -87,7 +87,7 @@ nr_forming = 1
 cc_ps_form, cc_ns_form = 0.15, -3 # mA
 V_sweep_set, V_sweep_reset = 1.3, -1.8 # V
 V_sweep_gate = [0, 0]
-nr_presweeps = 100
+nr_presweeps = 2e4
 nr_sweeps =10
 
 cc_ps, cc_ns = 0.2, -2 # mA
@@ -200,11 +200,11 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
         measurement_path, measurement_nr, nr_rep, df_wf = routine_IV_sweep(cassini, 
                                 V_sweep_set, 
                                 V_sweep_reset,
-                                cycle=cycle_sweep,  # Nr. cycles
+                                cycle=2,  # Nr. cycles
                                 rate_sweep=sweep_rate,
                                 V_gate=V_sweep_gate,
                                 t_break=t_break_sweeps, 
-                                n_rep=n_presweeps,
+                                n_rep=-1,
                                 step_size=step_size_sweep,
                                 gain=gain_sweep, 
                                 cc_n=cc_ns, 
@@ -220,7 +220,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
                         bool_sweep=True,
                         df_endurance=df_endurance)
         counter_presweep += nr_rep
-    
+    hdhj
     # Verify if forming successful
     nr_sweep_switched = sum(bool_switched(R_states, states, bool_LRS, bool_HRS)[0])
     if nr_sweep_switched<=nr_rep*0.8:
@@ -232,7 +232,8 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
     ## Pulses/ Start endurance
     ###############################################################
     bool_device_working, id_nr, counter_sweep = True, 0, 100
-    while bool_device_working:
+    
+    while False:#while bool_device_working:
         
         # Unsafe way to limit the number of pulses to the maximal number in the list
         try:
@@ -263,12 +264,12 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
             n_dummy+=nr_rep
         action = "Switching with read"
         
-        cycle_pulse = int(nr_rep/10) if int(nr_rep/10) > 0 else 1
+        cycle_pulse = int(nr_meas /10) if int(nr_meas /10) > 0 else 1
         measurement_path, measurement_nr, nr_rep,df_wf = routine_IV_pulse(cassini, 
                                                             V_set= V_pulse_set, 
                                                             V_reset=V_pulse_reset,
                                                             V_read=V_pulse_read,
-                                                            cycle= cycle_pulse if cycle_pulse>2 else 2, 
+                                                            cycle= cycle_pulse if cycle_pulse<2 else 2, 
                                                             t_set=t_set_pulse,
                                                             t_reset=t_reset_pulse,
                                                             t_read=t_pulse_read,

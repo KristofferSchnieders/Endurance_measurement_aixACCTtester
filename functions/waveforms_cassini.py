@@ -123,7 +123,7 @@ def routine_IV_sweep(cassini,
         Number of current measurement.
 
     '''
-    cycle = cycle if  cycle < 3 else 2
+    cycle = cycle if  cycle < 10 else 10
     cassini.set_cycle(cycle)
     step_size = 2**np.round(np.log2(step_size*1e9))*1e-9
     # We have to assure that step size is following the form: 2**n * 1e-9, n in natural numbers
@@ -149,6 +149,7 @@ def routine_IV_sweep(cassini,
         else:
             wf_gate =  np.array([0,0,0])
         nr_rep = 1
+        wf_t = round_base(wf_t, step_size)
         # Concatenate the same waveform together
         # If nr. of repetitions fixed, then concatenate this many. (If waveform not to long.)
         if n_rep>1:
@@ -177,7 +178,7 @@ def routine_IV_sweep(cassini,
                     wf_V = np.append(wf_V[:-1], wf_V_init[1:])
                     wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
                     nr_rep+=1
-        wf_t = round_base(wf_t, step_size)
+
         t_max = max(wf_t)
         # We have to load signals into different channels according to structure.
         if sum(V_gate)==0:
@@ -231,7 +232,7 @@ def routine_IV_sweep(cassini,
     # Measurement
     measurement_path, measurement_nr = cassini.measurement()
 
-    nr_rep = nr_rep*cycle
+    nr_rep = n_rep*cycle
 
     return measurement_path, measurement_nr, n_rep, df_wf
 
@@ -319,11 +320,11 @@ def routine_IV_pulse(cassini,
 
         if bool_read: 
             #define waveform
-            wf_t = np.array([0, t_break*50, step_size, t_set, step_size,   # set
+            wf_t = np.array([0, t_break*200, step_size, t_set, step_size,   # set
                     t_break, step_size, t_read, step_size,   # read
                     t_break, step_size, t_reset, step_size, # reset
                     t_break, step_size, t_read, step_size,   # read
-                    t_break*10,t_break])
+                    t_break*200,t_break])
             wf_t = np.round(wf_t,9)
             wf_V = np.array([0, 0, V_set, V_set, 0,               # set
                             0, V_read, V_read, 0,             # read
@@ -353,6 +354,7 @@ def routine_IV_pulse(cassini,
                                     0])
 
         nr_rep = 1
+        wf_t = round_base(wf_t, step_size)        
         # !!! Option to concatenate as many signals as possible. The number of !!! 
         # !!! signals then is given out !!!
         if n_rep>1:
@@ -381,7 +383,7 @@ def routine_IV_pulse(cassini,
                     wf_V = np.append(wf_V[:-1], wf_V_init[1:])
                     wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
                     nr_rep+=1
-        wf_t = round_base(wf_t, step_size)        
+
         t_max = max(wf_t)
         if sum(V_gate)==0:
             # Define waveforms

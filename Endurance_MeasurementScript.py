@@ -80,11 +80,11 @@ sweep_rate_form = 1e2 # V/s
 t_break_sweeps, step_size_sweep = 1e-4, 1e-5 # s
 sweep_rate = 1e3 # V/s
 
-V_forming_set, V_forming_reset = 4, -2 # V
+V_forming_set, V_forming_reset = 4, -1.8 # V
 V_forming_gate = [0, 0]
 nr_forming = 1
 
-cc_ps_form, cc_ns_form = 0.2, -2 # mA
+cc_ps_form, cc_ns_form = 0.15, -3 # mA
 V_sweep_set, V_sweep_reset = 1.3, -1.8 # V
 V_sweep_gate = [0, 0]
 nr_presweeps = 100
@@ -94,8 +94,8 @@ cc_ps, cc_ns = 0.2, -2 # mA
 gain_sweep = Gain.LOW
 
 # Parameters pulses
-t_break_pulse, t_set_pulse, t_reset_pulse, t_pulse_read = 10e-9, 1e-6, 2e-6, 3e-6 # s
-V_pulse_set, V_pulse_reset, V_pulse_read = 1.2, -1.8, 0.2 # V
+t_break_pulse, t_set_pulse, t_reset_pulse, t_pulse_read = 1e-9, 0.2e-6, 1e-6, 1e-6 # s
+V_pulse_set, V_pulse_reset, V_pulse_read = 1.4, -1.8, 0.2 # V
 V_pulse_gate = [0, 0, 0]
 cc_pp, cc_np = 0.15, -2 # mA
 gain_pulse = Gain.MID
@@ -131,7 +131,7 @@ cassini.set_meta(operator="k.schnieders", wafer_name=sample_layout+ '_'+ sample_
 #%% Measurements
 cassini.prober.move_height_level(ProberHeight.CONTACT)
 #TODO: Decide, which devices should be chosen.
-id_device_offset, id_max_device, id_step_device = 1, 378, 20
+id_device_offset, id_max_device, id_step_device = 2, 378, 20
 
 
 # This is a trick to ensure that a Telegram message saying that there was an error is send to me. 
@@ -158,7 +158,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
     measurement_path, measurement_nr, nr_rep, df_wf = routine_IV_sweep(cassini, 
                             V_forming_set, 
                             V_forming_reset,
-                            cycle=nr_forming,
+                            cycle=1,
                             rate_sweep= sweep_rate_form,
                             V_gate=V_forming_gate,
                             t_break=t_break_forming, 
@@ -193,29 +193,33 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
     
     action = "Sweep"
     # Measurement
-    measurement_path, measurement_nr, nr_rep, df_wf = routine_IV_sweep(cassini, 
-                            V_sweep_set, 
-                            V_sweep_reset,
-                            cycle=int(nr_presweeps/10),  # Nr. cycles
-                            rate_sweep=sweep_rate,
-                            V_gate=V_sweep_gate,
-                            t_break=t_break_sweeps, 
-                            n_rep=int(nr_presweeps/10),
-                            step_size=step_size_sweep,
-                            gain=gain_sweep, 
-                            cc_n=cc_ns, 
-                            cc_p=cc_ps,
-                            df_wf=df_wf)
-    
-    # Evaluate measurement 
-    R_states, df_endurance, states = main_eval(dir_device, 
-                    measurement_path, 
-                    measurement_nr, 
-                    action, 
-                    device_name, 
-                    bool_sweep=True,
-                    df_endurance=df_endurance)
-    
+    cycle_sweep = int(nr_presweeps/10) if int(nr_presweeps/10) > 0 else 1
+    n_presweeps =  int(np.round(nr_presweeps/cycle_sweep,0))
+    counter_presweep=0
+    while counter_presweep < nr_presweeps:
+        measurement_path, measurement_nr, nr_rep, df_wf = routine_IV_sweep(cassini, 
+                                V_sweep_set, 
+                                V_sweep_reset,
+                                cycle=cycle_sweep,  # Nr. cycles
+                                rate_sweep=sweep_rate,
+                                V_gate=V_sweep_gate,
+                                t_break=t_break_sweeps, 
+                                n_rep=n_presweeps,
+                                step_size=step_size_sweep,
+                                gain=gain_sweep, 
+                                cc_n=cc_ns, 
+                                cc_p=cc_ps,
+                                df_wf=df_wf)
+        
+        # Evaluate measurement 
+        R_states, df_endurance, states = main_eval(dir_device, 
+                        measurement_path, 
+                        measurement_nr, 
+                        action, 
+                        device_name, 
+                        bool_sweep=True,
+                        df_endurance=df_endurance)
+        counter_presweep += nr_rep
     
     # Verify if forming successful
     nr_sweep_switched = sum(bool_switched(R_states, states, bool_LRS, bool_HRS)[0])
@@ -258,18 +262,20 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
                                                                 df_wf=df_wf)
             n_dummy+=nr_rep
         action = "Switching with read"
+        
+        cycle_pulse = int(nr_rep/10) if int(nr_rep/10) > 0 else 1
         measurement_path, measurement_nr, nr_rep,df_wf = routine_IV_pulse(cassini, 
                                                             V_set= V_pulse_set, 
                                                             V_reset=V_pulse_reset,
                                                             V_read=V_pulse_read,
-                                                            cycle=int(nr_meas/10) if int(nr_meas/10)>0  else 1, 
+                                                            cycle= cycle_pulse if cycle_pulse>2 else 2, 
                                                             t_set=t_set_pulse,
                                                             t_reset=t_reset_pulse,
                                                             t_read=t_pulse_read,
                                                             V_gate=V_pulse_gate,
                                                             t_break=t_break_pulse, 
-                                                            n_rep=int(nr_meas) if int(nr_meas)<10  else 100,
-                                                            step_size=t_break_pulse,
+                                                            n_rep=int(nr_meas) if int(nr_meas)<100  else 100,
+                                                            step_size=1e-9,
                                                             gain=gain_pulse, 
                                                             bool_read=True, 
                                                             cc_n=cc_np,

@@ -116,7 +116,13 @@ def running_median(data, n_runmed=10):
     return np.array([np.median(data[index:(index+n_runmed)]) for index in
                      range(len(data))])
 
-
+def get_states(Vin, Vread=0.2):
+    states= list()
+    for i, v_in in enumerate(Vin[:-1]):
+        if v_in==0 and Vin[i+1]==Vread:
+            Vpulse = Vin[i-4:i][np.argmax(abs(Vin[i-4:i]))]
+            states.append('LRS' if Vpulse>0 else 'HRS')
+    return states
 # Main function for filtering of data
 def filter_data(I, V, t, Nmean=5):
     '''
@@ -143,18 +149,18 @@ def filter_data(I, V, t, Nmean=5):
         filtered time / s 
 
     '''
+    N_smooth = 2
     I_filt, V_filt, t_filt = list(), list(), list()
     for i, dummy_I in enumerate(I):
-        I_offset = np.mean(I[i][:10])
-        I_filt_dummy=smooth_mean(I[i]-I_offset,N=2)
+        I_offset = np.mean(I[i][:10]) if abs(np.mean(I[i][:10]))<5e-5 else -4e-5 #np.mean(I[i][:10])
+        I_filt_dummy=smooth_mean(I[i]-I_offset,N=N_smooth)
         I_filt.append(running_median(I_filt_dummy[Nmean:],n_runmed=4))
         
-        V_offset = np.mean(V[i][:10])
-        V_filt_dummy=smooth_mean(V[i]-V_offset,N=2)
+        V_offset = 0 #np.mean(V[i][-10:])
+        V_filt_dummy=smooth_mean(V[i]-V_offset,N=N_smooth)
 
         V_filt.append(running_median(V_filt_dummy[Nmean:],n_runmed=4))
-        
-        t_filt.append(t[i][:len(I_filt[-1])])
+        t_filt.append(np.linspace(0,max(t[i]), len(V_filt[-1])))
 
     return I_filt, V_filt, t_filt
 
@@ -274,7 +280,7 @@ def find_read_sections(read_indices, n = 10, min_length = 10):
 ## Calculate and save Resistance
 #####################################################################    
 
-def calc_R_pulse(I_filt, V_filt, V_read=0.2):
+def calc_R_pulse(I_filt, V_filt, V_read=0.2, tin=[0, 1e-6], Vin=[0.2, 0.2], diff_t=1e-9):
     '''
     Calculate resistance in pulse by absolute amplitude.
 
@@ -294,13 +300,15 @@ def calc_R_pulse(I_filt, V_filt, V_read=0.2):
 
     '''
     R_states, states = [], []
+    len_read = (tin[np.where(Vin==0.2)[0][1]]-tin[np.where(Vin==0.2)[0][0]])/(diff_t*5)
     for i, I_f in enumerate(I_filt): 
-        for indices in find_read_sections(np.where(np.logical_and(V_filt[i]>V_read-0.1,
-                                                                  V_filt[i]<V_read+0.1))[0],n=5,min_length=5):
-            sign_pulse = np.sign(V_filt[i][np.where(abs(V_filt[i][:indices[0]])>0.7)[0][-1]])
-            state = "HRS" if sign_pulse <0 else "LRS"
-            states.append(state)
-            R_states.append(abs(np.mean(V_filt[i][indices[2:]]/I_filt[i][indices[2:]])))
+        segments = find_read_sections(np.where(np.logical_and(V_filt[i]>V_read-0.1,V_filt[i]<V_read+0.1))[0],n=20,min_length=10)
+        segments = [seg for seg in segments if len(seg)>len_read]  
+        if np.mod(len(segments),2) ==0:  
+            state_wf = get_states(Vin, Vread=0.2)
+            for j, indices in enumerate(segments):
+                R_states.append(abs(np.mean(V_filt[i][indices[2:]]/I_filt[i][indices[2:]])))
+                states = states + [state_wf[j]]     
     R_states, states = np.array(R_states), np.array(states)
     R_states[R_states>2e5] = 2e5
     return R_states, states
@@ -325,14 +333,16 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2):
 
     '''
     
+
     R_states, states = [], []
     for index_f, V_f in enumerate(V_filt):
         for index_sec, indices in enumerate(find_read_sections(np.where(np.logical_and(abs(V_f)>V_read-0.1,
-                                                                abs(V_f)<V_read+0.1))[0])):
-            if (abs(V_f[indices[0]])-abs(V_f[indices[-1]]))>0:
+                                                                abs(V_f)<V_read+0.1))[0], n=20)):
+            if (abs(V_f[indices[0]]-V_f[indices[-1]])>0.1) and (V_f[indices[-1]]<-0.05):
+                
                 # There are different ways of calculating the resistnace
                 # Currently we prefer fitting to the Gerade, as we hope  to mitigate outlieres by this in the best way
-                state = "HRS" if V_f[indices[-1]] < 0 else "LRS"
+                state = "HRS" if abs(V_f[indices[0]])-abs(V_f[indices[-1]])>0.1 else "LRS"
                 if False:
                     R_states.append(abs(V_f[indices][0]-V_f[indices][-1])/abs(I_filt[index_f][indices[-1]])-I_filt[index_f][indices[0]])
                     
@@ -396,7 +406,7 @@ def main_eval(dir_device: str,
     if bool_sweep: 
         R_states, states = calc_R_sweep(I_filt, V_filt, V_read=0.2)
     else: 
-        R_states, states = calc_R_pulse(I_filt, V_filt, V_read=0.2)
+        R_states, states = calc_R_pulse(I_filt, V_filt, V_read=0.2,tin=tin, Vin=Vin, diff_t=np.diff(t[0][:100])[-1])
     
     if type(df_endurance) == type(None):
         df_endurance = bearcats.DataFrame([{'device': device_name,

@@ -149,7 +149,7 @@ def routine_IV_sweep(cassini,
         else:
             wf_gate =  np.array([0,0,0])
         nr_rep = 1
-        wf_t = round_base(wf_t, step_size)
+
         # Concatenate the same waveform together
         # If nr. of repetitions fixed, then concatenate this many. (If waveform not to long.)
         if n_rep>1:
@@ -178,7 +178,7 @@ def routine_IV_sweep(cassini,
                     wf_V = np.append(wf_V[:-1], wf_V_init[1:])
                     wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
                     nr_rep+=1
-
+        wf_t = round_base(wf_t, step_size)
         t_max = max(wf_t)
         # We have to load signals into different channels according to structure.
         if sum(V_gate)==0:
@@ -228,7 +228,7 @@ def routine_IV_sweep(cassini,
 
     ## Set sampling rate
     print(int(step_size))
-    cassini.set_recording_samplerate(int(1/step_size))
+    cassini.set_recording_samplerate(int(np.round(1/step_size,2)))
     # Measurement
     measurement_path, measurement_nr = cassini.measurement()
 
@@ -354,7 +354,6 @@ def routine_IV_pulse(cassini,
                                     0])
 
         nr_rep = 1
-        wf_t = round_base(wf_t, step_size)        
         # !!! Option to concatenate as many signals as possible. The number of !!! 
         # !!! signals then is given out !!!
         if n_rep>1:
@@ -364,7 +363,7 @@ def routine_IV_pulse(cassini,
             nr_rep = 1
             for i in range(n_rep-1):
                 if max(wf_t_temp) < MAX_DATAPOINTS_AITESTER*step_size: 
-                    wf_t_temp = np.append(wf_t_temp[:-1], wf_t_init[1:]+max(wf_t_temp))
+                    wf_t_temp = np.append(wf_t_temp[:-1], wf_t_init[1:])
                     wf_V_temp = np.append(wf_V_temp[:-1], wf_V_init[1:])
                     wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
                     nr_rep+=1
@@ -383,7 +382,7 @@ def routine_IV_pulse(cassini,
                     wf_V = np.append(wf_V[:-1], wf_V_init[1:])
                     wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
                     nr_rep+=1
-
+        wf_t = round_base(wf_t, step_size)        
         t_max = max(wf_t)
         if sum(V_gate)==0:
             # Define waveforms
@@ -434,7 +433,7 @@ def routine_IV_pulse(cassini,
     cassini.set_ad("wedge03", t_max*1.2, termination=True)
 
     ## Set sampling rate
-    cassini.set_recording_samplerate(int(1/step_size))
+    cassini.set_recording_samplerate(int(np.round(1/step_size,2)))
     # Measurement
     measurement_path, measurement_nr = cassini.measurement()
 

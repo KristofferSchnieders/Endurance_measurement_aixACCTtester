@@ -55,7 +55,7 @@ df_wf = add_wf_df(None, 'Dummy', ['wf1', 'wf2'], 1, 0)
 
 # Define resistive states
 interval_LRS = np.array([0.1, 10])*1e3
-interval_HRS = np.array([15, 2e6])*1e3
+interval_HRS = np.array([10, 2e5])*1e3
 
 # Specify sample
 sample_layout = "Neurotec1_1R"
@@ -64,7 +64,7 @@ sample_name = 'Die_43'
 measurement= 'Endurance' + sample_layout
 
 # Save direction
-save_dir = os.path.join(r"D:\Data\Schnieders\Endurancesweep" ,
+save_dir = os.path.join(r"D:\Data\Schnieders\Endurance" ,
                         sample_layout, sample_material, sample_name, '_'.join(get_formatted_datetime().split('_')[:-3]))
 
 # TODO: Check, if 1R or 1T1R
@@ -85,19 +85,19 @@ V_forming_gate = [0, 0]
 nr_forming = 1
 
 cc_ps_form, cc_ns_form = 0.15, -3 # mA
-V_sweep_set, V_sweep_reset = 1.3, -1.8 # V
+V_sweep_set, V_sweep_reset = 1.6, -1.8 # V
 V_sweep_gate = [0, 0]
-nr_presweeps = 2e4
+nr_presweeps = 100
 nr_sweeps =10
 
-cc_ps, cc_ns = 0.2, -2 # mA
+cc_ps, cc_ns = 0.25, -2 # mA
 gain_sweep = Gain.LOW
 
 # Parameters pulses
-t_break_pulse, t_set_pulse, t_reset_pulse, t_pulse_read = 1e-9, 0.2e-6, 1e-6, 1e-6 # s
+t_break_pulse, t_set_pulse, t_reset_pulse, t_pulse_read = 4e-9, 0.2e-6, 1e-6, 1e-6 # s
 V_pulse_set, V_pulse_reset, V_pulse_read = 1.4, -1.8, 0.2 # V
 V_pulse_gate = [0, 0, 0]
-cc_pp, cc_np = 0.15, -2 # mA
+cc_pp, cc_np = 0.25, -2 # mA
 gain_pulse = Gain.MID
 
 # Number of endurance mesasurements
@@ -131,7 +131,7 @@ cassini.set_meta(operator="k.schnieders", wafer_name=sample_layout+ '_'+ sample_
 #%% Measurements
 cassini.prober.move_height_level(ProberHeight.CONTACT)
 #TODO: Decide, which devices should be chosen.
-id_device_offset, id_max_device, id_step_device = 2, 378, 20
+id_device_offset, id_max_device, id_step_device = 3, 378, 20
 
 
 # This is a trick to ensure that a Telegram message saying that there was an error is send to me. 
@@ -194,17 +194,17 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
     action = "Sweep"
     # Measurement
     cycle_sweep = int(nr_presweeps/10) if int(nr_presweeps/10) > 0 else 1
-    n_presweeps =  int(np.round(nr_presweeps/cycle_sweep,0))
+    n_presweeps =  int(np.round(nr_presweeps/5,0))
     counter_presweep=0
     while counter_presweep < nr_presweeps:
         measurement_path, measurement_nr, nr_rep, df_wf = routine_IV_sweep(cassini, 
                                 V_sweep_set, 
                                 V_sweep_reset,
-                                cycle=2,  # Nr. cycles
+                                cycle=cycle_sweep if cycle_sweep<2 else 1,  # Nr. cycles
                                 rate_sweep=sweep_rate,
                                 V_gate=V_sweep_gate,
                                 t_break=t_break_sweeps, 
-                                n_rep=-1,
+                                n_rep=n_presweeps,
                                 step_size=step_size_sweep,
                                 gain=gain_sweep, 
                                 cc_n=cc_ns, 
@@ -220,7 +220,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
                         bool_sweep=True,
                         df_endurance=df_endurance)
         counter_presweep += nr_rep
-    hdhj
+    
     # Verify if forming successful
     nr_sweep_switched = sum(bool_switched(R_states, states, bool_LRS, bool_HRS)[0])
     if nr_sweep_switched<=nr_rep*0.8:
@@ -232,8 +232,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
     ## Pulses/ Start endurance
     ###############################################################
     bool_device_working, id_nr, counter_sweep = True, 0, 100
-    
-    while False:#while bool_device_working:
+    while bool_device_working:
         
         # Unsafe way to limit the number of pulses to the maximal number in the list
         try:
@@ -264,18 +263,18 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
             n_dummy+=nr_rep
         action = "Switching with read"
         
-        cycle_pulse = int(nr_meas /10) if int(nr_meas /10) > 0 else 1
+        cycle_pulse = int(nr_rep/5) if int(nr_rep/5) > 0 else 1
         measurement_path, measurement_nr, nr_rep,df_wf = routine_IV_pulse(cassini, 
                                                             V_set= V_pulse_set, 
                                                             V_reset=V_pulse_reset,
                                                             V_read=V_pulse_read,
-                                                            cycle= cycle_pulse if cycle_pulse<2 else 2, 
+                                                            cycle= cycle_pulse, 
                                                             t_set=t_set_pulse,
                                                             t_reset=t_reset_pulse,
                                                             t_read=t_pulse_read,
                                                             V_gate=V_pulse_gate,
                                                             t_break=t_break_pulse, 
-                                                            n_rep=int(nr_meas) if int(nr_meas)<100  else 100,
+                                                            n_rep=int(nr_meas) if int(nr_meas)<5  else 5,
                                                             step_size=1e-9,
                                                             gain=gain_pulse, 
                                                             bool_read=True, 

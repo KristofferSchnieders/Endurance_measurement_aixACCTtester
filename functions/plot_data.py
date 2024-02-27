@@ -67,4 +67,4 @@ def figure_endurance(df_endurance, states, device, dir_device):
     fig.tight_layout()
     fig.savefig(os.path.join(dir_device,  f"Endurance_device_{device}_{get_formatted_datetime()}.png"))
     plt.close(fig)
-    df_endurance.to_pickle(os.path.join(dir_device, "df_endurace_" + '_'.join(get_formatted_datetime().split('_')[:-3]) + '.pkl'))
+    df_endurance.to_pickle(os.path.join(dir_device, "df_endurace_" + '_'.join(get_formatted_datetime().split('_')) + '.pkl'))

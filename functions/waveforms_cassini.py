@@ -45,7 +45,7 @@ def round_base(wf_t, step_size:float):
     delta_wf_t = np.ceil(wf_t/step_size)
     wf_t = np.array([int(t) if int(t) > 0 else 1 for t in delta_wf_t])
     wf_t[0] = 0
-    return np.cumsum(step_size * np.round(wf_t))
+    return np.round(np.cumsum(step_size * np.round(wf_t)),9)
 
 
 def add_wf_df(df_wf, name_wf, list_wf,t_max, nr_rep):
@@ -227,7 +227,6 @@ def routine_IV_sweep(cassini,
     cassini.set_ad("wedge03", t_max*1.2, termination=True)
 
     ## Set sampling rate
-    print(int(step_size))
     cassini.set_recording_samplerate(int(np.round(1/step_size,2)))
     # Measurement
     measurement_path, measurement_nr = cassini.measurement()
@@ -305,7 +304,7 @@ def routine_IV_pulse(cassini,
         Number of current measurement.
 
     '''
-    cycle = cycle if  cycle < 3 else 2
+    cycle = cycle if  cycle < 900 else 900
     cassini.set_cycle(cycle)
     step_size = 2**np.round(np.log2(step_size*1e9))*1e-9
     # We have to assure that step size is following the form: 2**n * 1e-9, n in natural numbers
@@ -320,13 +319,14 @@ def routine_IV_pulse(cassini,
 
         if bool_read: 
             #define waveform
-            wf_t = np.array([0, t_break*200, step_size, t_set, step_size,   # set
-                    t_break, step_size, t_read, step_size,   # read
-                    t_break, step_size, t_reset, step_size, # reset
-                    t_break, step_size, t_read, step_size,   # read
-                    t_break*200,t_break])
-            wf_t = np.round(wf_t,9)
-            wf_V = np.array([0, 0, V_set, V_set, 0,               # set
+            wf_t = np.array([step_size,t_break*3, step_size, t_set, step_size,   # set
+                t_break, step_size,t_read, step_size,   # read
+                t_break, step_size, t_reset, step_size, # reset
+                t_break, step_size, t_read, step_size,   # read
+                t_break, t_break])
+
+                        
+            wf_V = np.array([0, 0,V_set, V_set, 0,               # set
                             0, V_read, V_read, 0,             # read
                             0, V_reset, V_reset, 0,           # reset
                             0, V_read, V_read, 0,             # read
@@ -338,13 +338,12 @@ def routine_IV_pulse(cassini,
                                     V_gate[2], V_gate[2], V_gate[2], V_gate[2], 
                                     0])
             else:
-                wf_gate=np.array([0,0,0])
+                wf_gate=np.array([0,0,0])        
         else: 
             #define waveform
             wf_t = [0, t_break, step_size, t_set, step_size,   # set
                     t_break, step_size, t_reset, step_size, # reset
                     t_break]
-            wf_t = round_base(wf_t, step_size)
             wf_V = np.array([0, V_set, V_set, 0,               # set
                             0, V_reset, V_reset, 0,           # reset
                             0])
@@ -363,9 +362,9 @@ def routine_IV_pulse(cassini,
             nr_rep = 1
             for i in range(n_rep-1):
                 if max(wf_t_temp) < MAX_DATAPOINTS_AITESTER*step_size: 
-                    wf_t_temp = np.append(wf_t_temp[:-1], wf_t_init[1:])
-                    wf_V_temp = np.append(wf_V_temp[:-1], wf_V_init[1:])
-                    wf_gate = np.append(wf_gate[:-1], wf_gate_init[1:])
+                    wf_t_temp = np.append(wf_t_temp[:-1], wf_t_init[2:])
+                    wf_V_temp = np.append(wf_V_temp[:-1], wf_V_init[2:])
+                    wf_gate = np.append(wf_gate[:-1], wf_gate_init[2:])
                     nr_rep+=1
                 wf_t, wf_V = wf_t_temp, wf_V_temp
         # !!! Option to concatenate as many signals as possible. The number of !!! 
@@ -440,4 +439,3 @@ def routine_IV_pulse(cassini,
     nr_rep = nr_rep*cycle
 
     return measurement_path, measurement_nr, nr_rep,df_wf
-

@@ -42,6 +42,14 @@ def read_data(measurement_path: str, measurement_nr: int, bool_not1T1R=True):
         Measure current / A.
 
     '''
+    
+    # Makes use also possible if used from IFF network computer
+    if not os.path.isfile(measurement_path):
+        measurement_path = os.path.join(r"\\iff1690.iff.kfa-juelich.de\data2",os.path.join(*measurement_path.split(r"/")[1:]))
+    if not os.path.isfile(measurement_path):
+        raise FileNotFoundError("You are not inside the IFF system. You cannot directly access the data or have to enter the access code for the computer.")
+        
+
     if bool_not1T1R:
         with h5py.File(measurement_path ,"r") as f:
             tin =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge02"][0])
@@ -152,11 +160,12 @@ def filter_data(I, V, t, Nmean=5):
     N_smooth = 2
     I_filt, V_filt, t_filt = list(), list(), list()
     for i, dummy_I in enumerate(I):
-        I_offset = np.mean(I[i][:10]) if abs(np.mean(I[i][:10]))<5e-5 else -4e-5 #np.mean(I[i][:10])
+        indexV_0 = np.where(abs(V[i])<0.05)[0]
+        I_offset = np.mean(I[i][indexV_0][-50:]) if abs(np.mean(I[i][indexV_0][-10:]))<5e-5 else -4e-5 #np.mean(I[i][:10])
         I_filt_dummy=smooth_mean(I[i]-I_offset,N=N_smooth)
         I_filt.append(running_median(I_filt_dummy[Nmean:],n_runmed=4))
         
-        V_offset = 0 #np.mean(V[i][-10:])
+        V_offset = np.mean(V[i][indexV_0][-10:])
         V_filt_dummy=smooth_mean(V[i]-V_offset,N=N_smooth)
 
         V_filt.append(running_median(V_filt_dummy[Nmean:],n_runmed=4))
@@ -229,9 +238,9 @@ def load_raw_data_and_store(measurement_path,
     
     tin, Vin, t, V, I = read_data(measurement_path, measurement_nr)
     data = bearcats.DataFrame([{ 'device': device_name,
-                            'V': V,
-                            'I': I,
-                            't': t,
+                            #'V': V,
+                            #'I': I,
+                            #'t': t,
                             'datetime': datetime.now().timestamp(), 
                             "measurement_path": measurement_path,
                             "measurement_nr": measurement_nr,
@@ -303,17 +312,22 @@ def calc_R_pulse(I_filt, V_filt, V_read=0.2, tin=[0, 1e-6], Vin=[0.2, 0.2], diff
     len_read = (tin[np.where(Vin==0.2)[0][1]]-tin[np.where(Vin==0.2)[0][0]])/(diff_t*5)
     for i, I_f in enumerate(I_filt): 
         segments = find_read_sections(np.where(np.logical_and(V_filt[i]>V_read-0.1,V_filt[i]<V_read+0.1))[0],n=20,min_length=10)
-        segments = [seg for seg in segments if len(seg)>len_read]  
+        segments = [seg for seg in segments if len(seg)>len_read and diff_t*2*np.mean(seg)>tin[Vin==0.2][0]] 
         if np.mod(len(segments),2) ==0:  
             state_wf = get_states(Vin, Vread=0.2)
             for j, indices in enumerate(segments):
-                R_states.append(abs(np.mean(V_filt[i][indices[2:]]/I_filt[i][indices[2:]])))
-                states = states + [state_wf[j]]     
+                indices = indices[int(len(indices)/3):-int(len(indices)/8)]
+                
+                R_states.append(abs(np.mean(abs(V_filt[i][indices[2:]]/I_filt[i][indices[2:]]))))
+                try:
+                    states = states + [state_wf[j]]     
+                except: 
+                    states = states + [state_wf[np.mod(j,2)]]     
     R_states, states = np.array(R_states), np.array(states)
     R_states[R_states>2e5] = 2e5
     return R_states, states
 
-def calc_R_sweep(I_filt, V_filt, V_read=0.2):
+def calc_R_sweep(I_filt, V_filt, V_read=0.2, sr=1e3):
     '''
     Calculate resistance in sweep by slope.
 
@@ -332,7 +346,12 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2):
         Resistance of device.
 
     '''
-    
+    if sr==1e3:
+        parasitic_slope=3.8e-6
+    elif sr==1e4:
+        parasitic_slope=4.5e-6
+    else:
+        parasitic_slope=7.035e-6
 
     R_states, states = [], []
     for index_f, V_f in enumerate(V_filt):
@@ -348,8 +367,9 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2):
                     
                 else:
                     pol_fit = np.polyfit(V_f[indices], I_filt[index_f][indices], 1)
+                    
                     states.append(state)
-                    R_states.append(abs(1/pol_fit[0]))
+                    R_states.append(abs(1/(abs(pol_fit[0])-abs(parasitic_slope))))
                     
     R_states, states = np.array(R_states), np.array(states)
     R_states[R_states>2e5] = 2e5
@@ -406,7 +426,7 @@ def main_eval(dir_device: str,
     if bool_sweep: 
         R_states, states = calc_R_sweep(I_filt, V_filt, V_read=0.2)
     else: 
-        R_states, states = calc_R_pulse(I_filt, V_filt, V_read=0.2,tin=tin, Vin=Vin, diff_t=np.diff(t[0][:100])[-1])
+        R_states, states = calc_R_pulse(I_filt, V_filt, V_read=0.2,tin=tin, Vin=Vin, diff_t=np.diff(t_filt[0][:100])[-1])
     
     if type(df_endurance) == type(None):
         df_endurance = bearcats.DataFrame([{'device': device_name,

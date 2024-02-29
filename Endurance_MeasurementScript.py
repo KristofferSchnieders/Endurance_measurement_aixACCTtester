@@ -95,12 +95,12 @@ cc_ps, cc_ns = 0.2, -2 # mA
 gain_sweep = Gain.LOW
 
 # Parameters pulses
-t_break_pulse, t_set_pulse, t_reset_pulse, t_pulse_read, t_sr_pulse = 120e-9, 0.12e-6, 0.8e-6, 0.52e-6, 4e-9 # s
+t_break_pulse, t_set_pulse, t_reset_pulse, t_pulse_read, t_sr_pulse = 100e-9, 0.1e-6, 0.5e-6, 0.5e-6, 1e-9 # s
 V_pulse_set, V_pulse_reset, V_pulse_read = 1.2, -1.7, 0.2 # V
 V_pulse_gate = [0, 0, 0]
 cc_pp, cc_np = 0.3, -2 # mA
 gain_pulse = Gain.MID
-
+max_nr_wf_pulse=1
 
 # Number of endurance mesasurements
 nr_meas_endurance = [10, 50, 100, 1000, 10000]
@@ -133,7 +133,7 @@ cassini.set_meta(operator="k.schnieders", wafer_name=sample_layout+ '_'+ sample_
 #%% Measurements
 cassini.prober.move_height_level(ProberHeight.CONTACT)
 #TODO: Decide, which devices should be chosen.
-id_device_offset, id_max_device, id_step_device = 8, 378, 20
+id_device_offset, id_max_device, id_step_device = 11, 378, 20
 
 
 # This is a trick to ensure that a Telegram message saying that there was an error is send to me. 
@@ -269,7 +269,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
             n_dummy+=nr_rep
         action = "Switching with read"
         
-        cycle_pulse = int(nr_meas/3) if int(nr_meas/3) > 0 else 1
+        cycle_pulse = int(nr_meas/max_nr_wf_pulse) if int(nr_meas/max_nr_wf_pulse) > 0 else max_nr_wf_pulse
         measurement_path, measurement_nr, nr_rep,df_wf = routine_IV_pulse(cassini, 
                                                             V_set= V_pulse_set, 
                                                             V_reset=V_pulse_reset,
@@ -280,7 +280,7 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
                                                             t_read=t_pulse_read,
                                                             V_gate=V_pulse_gate,
                                                             t_break=t_break_pulse, 
-                                                            n_rep=int(nr_meas) if int(nr_meas)<3 else 3,
+                                                            n_rep=int(nr_meas) if int(nr_meas)<max_nr_wf_pulse else max_nr_wf_pulse,
                                                             step_size=t_sr_pulse,
                                                             gain=gain_pulse, 
                                                             bool_read=True, 
@@ -316,11 +316,11 @@ for id_device, device_name in enumerate(device_names[id_device_offset:id_max_dev
             measurement_path, measurement_nr, nr_rep, df_wf = routine_IV_sweep(cassini, 
                                     V_sweep_set, 
                                     V_sweep_reset,
-                                    cycle=nr_sweeps,  # Nr. cycles
+                                    cycle=1,  # Nr. cycles
                                     rate_sweep=sweep_rate,
                                     V_gate=V_sweep_gate,
                                     t_break=t_break_sweeps, 
-                                    n_rep=10,
+                                    n_rep=nr_sweeps,
                                     step_size=step_size_sweep,
                                     gain=gain_sweep, 
                                     cc_n=cc_ns, 

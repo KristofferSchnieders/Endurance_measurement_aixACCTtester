@@ -12,6 +12,10 @@ import pandas as bearcats
 import os
 import sys 
 
+
+import matplotlib.pyplot as plt
+
+from matplotlib import cm
 sys.path.append(r"D:\Scripts\Schnieders\Endurance_measurement_aixACCTtester\functions")
 from plot_data import *
 
@@ -58,21 +62,25 @@ def read_data(measurement_path: str, measurement_nr: int, bool_not1T1R=True):
             Vread = np.array([V[1] for V in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge02"])])
             Iread = np.array([I[1] for I in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge03"])])
     else:
-        V_in_src =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge01"])
-        V_in_drain =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge03"])
-        V_in_gate =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge04"])
+        with h5py.File(measurement_path ,"r") as f:
+            tin, V_in_src =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge01"])
+            V_in_drain =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge03"][1])
+            V_in_gate =np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_DA_wedge04"][1])
+            
+            tread = np.array([t[0] for t in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge02"])])
+            Vread = np.array([V[1] for V in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge02"])])
+            Iread = np.array([I[1] for I in np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge03"])])
         
-        Iread =-np.array(f[f"Container_0/DataSet_{measurement_nr}/MatrixDouble_AD_wedge03"])[0]
-        
-        Vgate = np.interp(Iread[0],V_in_gate[0],V_in_gate[1])
-        Vsrc = np.interp(Iread[0],V_in_src[0],V_in_src[1])
-        Vdrain = np.interp(Iread[0],V_in_drain[0],V_in_drain[1])
-        Vread = Vsrc - Vdrain
+            
+        Vgate = np.interp(tread[0],tin,V_in_gate)
+        Vsrc = np.interp(tread[0],tin,V_in_src)
+        Vdrain = np.interp(tread[0],tin,V_in_drain)
+        Vin = [Vsrc - Vdrain]
 
     if bool_not1T1R:
         return tin, Vin, tread, Vread, Iread
     else: 
-        return tin, Vin, tread, Vread, Iread, Vgate
+        return tin, Vin, tread, Vdrain, Vsrc, Vgate, Iread
 
 def smooth_mean(x, N=10):
     '''
@@ -132,7 +140,7 @@ def get_states(Vin, Vread=0.2):
             states.append('LRS' if Vpulse>0 else 'HRS')
     return states
 # Main function for filtering of data
-def filter_data(I, V, t, Nmean=5):
+def filter_data(I, V, t, Nmean=5, bool_1T1R=False):
     '''
     Filter data
 
@@ -164,13 +172,17 @@ def filter_data(I, V, t, Nmean=5):
         I_offset = np.mean(I[i][indexV_0][-50:]) if abs(np.mean(I[i][indexV_0][-10:]))<5e-5 else -4e-5 #np.mean(I[i][:10])
         I_filt_dummy=smooth_mean(I[i]-I_offset,N=N_smooth)
         I_filt.append(running_median(I_filt_dummy[Nmean:],n_runmed=4))
-        
-        V_offset = np.mean(V[i][indexV_0][-10:])
-        V_filt_dummy=smooth_mean(V[i]-V_offset,N=N_smooth)
+        if not bool_1T1R:
+            V_offset = np.mean(V[i][indexV_0][-10:])
+            V_filt_dummy=smooth_mean(V[i]-V_offset,N=N_smooth)
+
+            V_filt.append(running_median(V_filt_dummy[Nmean:],n_runmed=4))
+        t_filt.append(np.linspace(0,max(t[i]), len(I_filt[-1])))
+    if bool_1T1R: 
+        V_offset = np.mean(V[indexV_0][-10:])
+        V_filt_dummy=smooth_mean(V-V_offset,N=N_smooth)
 
         V_filt.append(running_median(V_filt_dummy[Nmean:],n_runmed=4))
-        t_filt.append(np.linspace(0,max(t[i]), len(V_filt[-1])))
-
     return I_filt, V_filt, t_filt
 
 #####################################################################
@@ -235,8 +247,10 @@ def load_raw_data_and_store(measurement_path,
                       "Switching with read",
                       "Switching without read"]:
         raise Exception(("Please define a your measurement."))
-    
-    tin, Vin, t, V, I = read_data(measurement_path, measurement_nr)
+    if "Neurotec1_1T1R" not in dir_data_save:
+        tin, Vin, t, V, I = read_data(measurement_path, measurement_nr,bool_not1T1R='1T1R' not  in dir_data_save)
+    else:
+        tin, Vin, tread, Vdrain, Vsrc, Vgate, Iread  = read_data(measurement_path, measurement_nr,bool_not1T1R='1T1R' not  in dir_data_save)
     data = bearcats.DataFrame([{ 'device': device_name,
                             #'V': V,
                             #'I': I,
@@ -247,10 +261,14 @@ def load_raw_data_and_store(measurement_path,
                             "action": action
                             }])
     
-    filename_pkl = f"{action}_{'V_set='}{np.around(max(V[0]),2)}_{'V_V_reset='}{np.around(min(V[0]),2)}_V_{get_formatted_datetime()}.pkl"
+    filename_pkl = f"{action}_{'V_set='}{np.around(max(Vin),2)}_{'V_V_reset='}{np.around(min(Vin[0]),2)}_V_{get_formatted_datetime()}.pkl"
     
     data.to_pickle(os.path.join(dir_data_save, filename_pkl))
-    return tin, Vin, t, V, I
+    if "Neurotec1_1T1R" not in dir_data_save:
+        return tin, Vin, t, V, I
+    else:
+        return tin, Vin, tread, Vdrain, Vsrc, Vgate, Iread
+
 
 
 ################################
@@ -289,7 +307,7 @@ def find_read_sections(read_indices, n = 10, min_length = 10):
 ## Calculate and save Resistance
 #####################################################################    
 
-def calc_R_pulse(I_filt, V_filt, V_read=0.2, tin=[0, 1e-6], Vin=[0.2, 0.2], diff_t=1e-9):
+def calc_R_pulse(I_filt, V_filt, V_read=0.2, tin=[0, 1e-6], Vin=[0.2, 0.2], diff_t=1e-9, bool_1T1R=False):
     '''
     Calculate resistance in pulse by absolute amplitude.
 
@@ -311,14 +329,20 @@ def calc_R_pulse(I_filt, V_filt, V_read=0.2, tin=[0, 1e-6], Vin=[0.2, 0.2], diff
     R_states, states = [], []
     len_read = (tin[np.where(Vin==0.2)[0][1]]-tin[np.where(Vin==0.2)[0][0]])/(diff_t*5)
     for i, I_f in enumerate(I_filt): 
-        segments = find_read_sections(np.where(np.logical_and(V_filt[i]>V_read-0.1,V_filt[i]<V_read+0.1))[0],n=20,min_length=10)
+        if not bool_1T1R:
+            segments = find_read_sections(np.where(np.logical_and(V_filt[i]>V_read-0.1,V_filt[i]<V_read+0.1))[0],n=20,min_length=10)
+        else: 
+            segments = find_read_sections(np.where(np.logical_and(V_filt>V_read-0.1,V_filt<V_read+0.1))[0],n=20,min_length=10)
         segments = [seg for seg in segments if len(seg)>len_read and diff_t*2*np.mean(seg)>tin[Vin==0.2][0]] 
         if np.mod(len(segments),2) ==0:  
             state_wf = get_states(Vin, Vread=0.2)
             for j, indices in enumerate(segments):
                 indices = indices[int(len(indices)/3):-int(len(indices)/8)]
                 
-                R_states.append(abs(np.mean(abs(V_filt[i][indices[2:]]/I_filt[i][indices[2:]]))))
+                if not bool_1T1R:
+                    R_states.append(abs(np.mean(abs(V_filt[i][indices[2:]]/I_filt[i][indices[2:]]))))
+                else:
+                    R_states.append(abs(np.mean(abs(V_filt[indices[2:]]/I_filt[i][indices[2:]]))))
                 try:
                     states = states + [state_wf[j]]     
                 except: 
@@ -327,7 +351,7 @@ def calc_R_pulse(I_filt, V_filt, V_read=0.2, tin=[0, 1e-6], Vin=[0.2, 0.2], diff
     R_states[R_states>2e5] = 2e5
     return R_states, states
 
-def calc_R_sweep(I_filt, V_filt, V_read=0.2, sr=1e3):
+def calc_R_sweep(I_filt, V_filt, V_read=0.2, sr=1e3, bool_1T1R=False):
     '''
     Calculate resistance in sweep by slope.
 
@@ -354,7 +378,9 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2, sr=1e3):
         parasitic_slope=7.035e-6
 
     R_states, states = [], []
-    for index_f, V_f in enumerate(V_filt):
+    for index_f, I_f in enumerate(I_filt):
+    
+        V_f = V_filt[index_f]
         for index_sec, indices in enumerate(find_read_sections(np.where(np.logical_and(abs(V_f)>V_read-0.1,
                                                                 abs(V_f)<V_read+0.1))[0], n=20)):
             if (abs(V_f[indices[0]]-V_f[indices[-1]])>0.1) and (V_f[indices[-1]]<-0.05):
@@ -366,7 +392,7 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2, sr=1e3):
                     R_states.append(abs(V_f[indices][0]-V_f[indices][-1])/abs(I_filt[index_f][indices[-1]])-I_filt[index_f][indices[0]])
                     
                 else:
-                    pol_fit = np.polyfit(V_f[indices], I_filt[index_f][indices], 1)
+                    pol_fit = np.polyfit(V_f[indices], I_f[indices], 1)
                     
                     states.append(state)
                     R_states.append(abs(1/(abs(pol_fit[0])-abs(parasitic_slope))))
@@ -375,6 +401,37 @@ def calc_R_sweep(I_filt, V_filt, V_read=0.2, sr=1e3):
     R_states[R_states>2e5] = 2e5
     return R_states, states
 
+
+def make_figures_1T1R(dir_device, action, measurement_path, measurement_nr: int):
+    tin, Vin, tread, Vdrain, Vsrc, Vgate, Iread = read_data(measurement_path, measurement_nr, bool_not1T1R=False)
+    V = Vsrc-Vdrain
+    I_filt, V_filt, t_filt = filter_data(Iread, V, tread, bool_1T1R=True)
+    I_offset=np.mean(Iread[-10:])
+    cmap = cm.rainbow
+    fig, ax = plt.subplots(1,3)
+    ax[0].plot(tread[0], Vsrc, color=cmap(0.1), label="Source")
+    ax[0].plot(tread[0], Vdrain, color=cmap(1/2), label="Drain")
+    ax[0].plot(tread[0], Vgate, color=cmap(1-0.01), label="Gate")
+    ax[0].set_title(' Voltage in')
+    ax[0].set_xlabel('V / V')
+    ax[0].set_ylabel('t / s')
+    ax[0].legend(ncol=3,mode="expand",framealpha=0,fontsize=8)
+    ax[1].plot(tread[0], Vin[0], color=cmap(1/2), label="Device voltage")
+    ax[1].legend(ncol=3,framealpha=0,fontsize=8)
+    ax[1].set_title('Device voltage')
+    ax[1].set_xlabel('V / V')
+    ax[1].set_ylabel('t / s')
+    ax[2].plot(tread[-1], Iread[-1]*1e6, color=cmap(0.01),label='Read')
+    ax[2].plot(t_filt[-1],I_filt[-1]*1e6, color=cmap(1-0.01),label='Filtered')
+    ax[2].legend(ncol=2,mode="expand",framealpha=0,fontsize=8)
+    ax[2].set_ylabel('I / $\mu$A')
+    ax[2].set_xlabel('t / s')
+    ax[2].set_title('Current')
+    fig.set_figheight(4)
+    fig.set_figwidth(12)
+    fig.tight_layout()
+    fig.savefig(os.path.join(dir_device,  f"{action}_{'V_set='}{np.around(max(Vin),2)}_{'V_reset='}{np.around(min(Vin),2)}_{get_formatted_datetime()}.png"))
+    plt.close(fig)
 
 #####################################################################
 ## Combined Eval. fct.
@@ -415,19 +472,39 @@ def main_eval(dir_device: str,
         Resistance.
 
     '''
-    tin, Vin, t, V, I = load_raw_data_and_store(measurement_path, 
+    if "Neurotec1_1T1R" not in dir_device:
+        tin, Vin, t, V, I = load_raw_data_and_store(measurement_path, 
                                                 measurement_nr,
                                                 action,
                                                 device_name,
                                                 dir_data_save=dir_device)
-    
-    I_filt, V_filt, t_filt = filter_data(I, V, t)
+    else: 
+        tin, Vin, t, Vdrain, Vsrc, Vgate, I = load_raw_data_and_store(measurement_path, 
+                                                measurement_nr,
+                                                action,
+                                                device_name,
+                                                dir_data_save=dir_device)
+        V = Vsrc-Vdrain
+
         
     if bool_sweep: 
-        R_states, states = calc_R_sweep(I_filt, V_filt, V_read=0.2)
-    else: 
-        R_states, states = calc_R_pulse(I_filt, V_filt, V_read=0.2,tin=tin, Vin=Vin, diff_t=np.diff(t_filt[0][:100])[-1])
+        if "Neurotec1_1T1R" not in dir_device:
+            I_filt, V_filt, t_filt = filter_data(Iread, V, t, bool_1T1R=False)
+            R_states, states = calc_R_sweep(I_filt, V_filt, V_read=0.2)
+        else: 
+            I_filt, V_filt, t_filt = filter_data(I, V, t, bool_1T1R=True)
+            R_states, states = calc_R_sweep(I_filt, V_filt, V_read=0.2, bool_1T1R=True)
+                    
+    else:
+        if "Neurotec1_1T1R" not in dir_device:
+            I_filt, V_filt, t_filt = filter_data(I, V, t, bool_1T1R=False)
+            R_states, states = calc_R_pulse(I_filt, V_filt, V_read=0.2,tin=tin, Vin=Vin, diff_t=np.diff(t_filt[0][:100])[-1])
+        else: 
+            I_filt, V_filt, t_filt = filter_data(I, V, t, bool_1T1R=True)
+            R_states, states = calc_R_pulse(I_filt, V_filt, V_read=0.2,tin=tin, Vin=Vin, diff_t=np.diff(t_filt[0][:100])[-1], bool_1T1R=False)
     
+         
+        
     if type(df_endurance) == type(None):
         df_endurance = bearcats.DataFrame([{'device': device_name,
                                 'R': R_states,
@@ -449,6 +526,9 @@ def main_eval(dir_device: str,
                                         }])], ignore_index = True)
     
     # Make figure
-    make_figures(dir_device, action, tin, Vin, t, V, I, t_filt, V_filt , I_filt)
+    if "Neurotec1_1T1R" not in dir_device:
+        make_figures(dir_device, action, tin, Vin, t, V, I, t_filt, V_filt , I_filt)
+    else: 
+        make_figures_1T1R(dir_device, action, measurement_path, measurement_nr)
     
     return R_states, df_endurance, states

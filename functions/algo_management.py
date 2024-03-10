@@ -103,3 +103,13 @@ def send_msg(text):
     url_req = r'https://api.telegram.org/bot' + token + "/sendMessage" + "?chat_id=" + chat_id + "&text=" + text
     results = requests.get(url_req)
     print(results.json())
+
+def choose_gate_V(V_gate, geomet):
+    if geomet in "1T1R_ne5_u500_10u":
+        return V_gate["u500_10u"], False
+    elif geomet in "1T1R_ne5_u220_u500":
+        return V_gate["u500_10u"], True
+    elif geomet in "1T1R_ne5_10u_10u":
+        return V_gate["10u_10u"], True
+    elif geomet in "1T1R_ne5_10u_u500":
+        return V_gate["10u_u500"],True

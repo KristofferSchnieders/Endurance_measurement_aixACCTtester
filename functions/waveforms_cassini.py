@@ -4,6 +4,7 @@ Created on Sun Jan 14 12:52:59 2024
 
 @author: schnieders
 """
+# Here, we still have a security gap to the real maximum.
 import pandas as pd
 
 ## Communication with setup
@@ -14,14 +15,26 @@ import cassini.lib.waveform as waveforms
 
 # Mathematical functions
 import numpy as np
+from datetime import datetime 
 
 import sys 
 
 import copy
 
-sys.path.append("DIR with scripts")
-from data_management import *
-from algo_management import bool_states
+def get_formatted_datetime():
+    '''
+    Return time stamp
+
+    Returns
+    -------
+    formatted_time : str
+        Time stamp with current time.
+
+    '''
+    current_time = datetime.now()
+    formatted_time = current_time.strftime('%Y_%m_%d_%H_%M_%S')
+    return formatted_time
+
 
 # Here, we still have a security gap to the real maximum.
 MAX_DATAPOINTS_AITESTER = 70e3
@@ -61,14 +74,15 @@ def add_wf_df(df_wf, name_wf, list_wf,t_max, nr_rep):
     return df_wf 
 
 
+
 #####################################################################
 ## Waveforms
 #####################################################################
 
 # Sweeps
 def routine_IV_sweep(cassini, 
-                     V_set:float, 
-                     V_reset:float, 
+                     V_set=-2, 
+                     V_reset=2, 
                      cycle=1, 
                      rate_sweep=1e3,
                      V_gate=[0,0],
@@ -129,6 +143,7 @@ def routine_IV_sweep(cassini,
     # We have to assure that step size is following the form: 2**n * 1e-9, n in natural numbers
     # We round the stepsize down to the next value to the form above.
     name_wf = f'wf_sweep_Vset_{int(V_set*1e3)}mV_Vreset_{int(V_reset*1e3)}mV_rep_{int(n_rep)}_'
+    name_wf = name_wf + f'stepsize{int(step_size*1e9)}' 
     name_wf = name_wf + '1R' if np.sum(V_gate)==0 else name_wf + '1T1R'
     if sum(name_wf==df_wf.name)==0:
         # make sure that only one wf applied
@@ -188,12 +203,12 @@ def routine_IV_sweep(cassini,
             list_wf = [waveform_iv_sweep, waveform_ground]
             
         else:
-            wf_sorce = wf_V*(wf_V>0).astype(int)
-            wf_drain = abs(wf_V*(wf_V<0).astype(int))
+            wf_sorce = abs(wf_V*(wf_V>0).astype(float))
+            wf_drain = abs(wf_V*(wf_V<0).astype(float))
             waveform_iv_source = waveforms.Waveform(name_wf+"_source", np.array([wf_t, wf_sorce]),step_size=step_size)
             waveform_bulk   = waveforms.Waveform(name_wf+"ground_bulk", np.array([wf_t, wf_V*0]),step_size=step_size)
             waveform_iv_drain = waveforms.Waveform(name_wf+"_drain", np.array([wf_t, wf_drain]),step_size=step_size)
-            waveform_gate   = waveforms.Waveform(name_wf+"_gate", np.array([wf_t, wf_V*0]),step_size=step_size)
+            waveform_gate   = waveforms.Waveform(name_wf+"_gate", np.array([wf_t, wf_gate]),step_size=step_size)
             list_wf = [waveform_iv_source, waveform_bulk, waveform_iv_drain, waveform_gate]
         df_wf = add_wf_df(df_wf, name_wf, list_wf, max(wf_t), nr_rep)
     else: 
@@ -216,6 +231,7 @@ def routine_IV_sweep(cassini,
         cassini.set_waveform("wedge02", waveform=waveform_bulk)
         cassini.set_waveform("wedge03", waveform=waveform_iv_drain)
         cassini.set_waveform("wedge04", waveform=waveform_gate)
+
     # set probeboard parameters
     cassini.set_parameter_probeboard(gain=gain, ccn=cc_n, ccp=cc_p,
                                      cc_deactivate=False,probe_switch=probe_switch)
@@ -229,9 +245,13 @@ def routine_IV_sweep(cassini,
     ## Set sampling rate
     cassini.set_recording_samplerate(int(np.round(1/step_size,2)))
     # Measurement
+    time.sleep(0.5)
     measurement_path, measurement_nr = cassini.measurement()
 
     nr_rep = n_rep*cycle
+
+    return measurement_path, measurement_nr, n_rep, df_wf
+
 
     return measurement_path, measurement_nr, n_rep, df_wf
 
@@ -312,9 +332,11 @@ def routine_IV_pulse(cassini,
     
     # make sure that only one wf applied
 
-    name_wf = 'wf_PulseRead_' if bool_read else 'wf_PulseNORead_'
+    name_wf = get_formatted_datetime()+f'wf_PulseRead_' if bool_read else 'wf_PulseNORead_'
     name_wf = name_wf + f'Vset_{int(V_set*1e3)}mV_Vreset_{int(V_reset*1e3)}mV_tset_{int(t_set*1e9)}ns_treset_{int(t_reset*1e9)}ns_tread_{int(t_read*1e9)}ns_rep_{int(n_rep)}'
+    name_wf = name_wf + f"stepsize{int(step_size*1e9)}ns_"
     name_wf = name_wf + '_1R' if np.sum(V_gate)==0 else name_wf + '_1T1R'
+    
     if sum(name_wf==df_wf.name)==0:
 
         if bool_read: 
@@ -336,7 +358,7 @@ def routine_IV_pulse(cassini,
                                     V_gate[2], V_gate[2], V_gate[2], V_gate[2],
                                     V_gate[1], V_gate[1], V_gate[1], V_gate[1],
                                     V_gate[2], V_gate[2], V_gate[2], V_gate[2], 
-                                    0])
+                                    0,0])
             else:
                 wf_gate=np.array([0,0,0])        
         else: 
@@ -390,12 +412,12 @@ def routine_IV_pulse(cassini,
             list_wf = [waveform_iv_sweep, waveform_ground]
             
         else:
-            wf_sorce = wf_V*(wf_V>0).astype(int)
+            wf_sorce = abs(wf_V*(wf_V>0).astype(int))
             wf_drain = abs(wf_V*(wf_V<0).astype(int))
             waveform_iv_source = waveforms.Waveform(name_wf+"_source", np.array([wf_t, wf_sorce]),step_size=step_size)
             waveform_bulk   = waveforms.Waveform(name_wf+"ground_bulk", np.array([wf_t, wf_V*0]),step_size=step_size)
             waveform_iv_drain = waveforms.Waveform(name_wf+"_drain", np.array([wf_t, wf_drain]),step_size=step_size)
-            waveform_gate   = waveforms.Waveform(name_wf+"_gate", np.array([wf_t, wf_V*0]),step_size=step_size)
+            waveform_gate   = waveforms.Waveform(name_wf+"_gate", np.array([wf_t, wf_gate]),step_size=step_size)
             list_wf = [waveform_iv_source, waveform_bulk, waveform_iv_drain, waveform_gate]
         
         df_wf = add_wf_df(df_wf, name_wf, list_wf, t_max, nr_rep)

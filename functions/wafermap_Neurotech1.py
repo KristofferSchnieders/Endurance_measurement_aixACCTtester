@@ -185,23 +185,25 @@ def wafermap_Neurotech1_1T1R():
     transistor_type_vertical = ['']
     tracks_vertical = ['']
 
-    names_traces_vertiacal = ["A_LLL", "A_RRR", 
-                              "D_LLLL", "D_LLL", "D_LL", "D_L", "D_R", "D_RR"]
-    nr_device_in_vias_vertical = [[11], [11], 
-                                   [10], [10], [10], [10], [10], [10]]
-    name_transistors_vertical = [['1T1R_ne5_u220_u500'], ['1T1R_ne5_10u_u500'],
-                     ['1T1R_ne5_u220_u500'], ['1T1R_ne5_10u_u500'],
-                     ['1T1R_ne5_u500_10u'],  ['1T1R_ne5_10u_10u'],
-                     ['1T1R_ne5_u220_u500'], ['1T1R_ne5_u500_10u']]
+    names_traces_vertiacal = ["A_LLL", "D_LLLL", 
+                              "D_LLL", "D_LL", 
+                              "D_L", "D_R",
+                              "D_RR", "A_RRR"]
+    nr_device_in_vias_vertical = [[11], [10], 
+                                   [10], [10], [10], [10], [10], [11]]
+    name_transistors_vertical = [['1T1R_ne5_u220_u500'], ['1T1R_ne5_u220_u500'], 
+                                 ['1T1R_ne5_10u_u500'], ['1T1R_ne5_u500_10u'],  
+                                 ['1T1R_ne5_10u_10u'],['1T1R_ne5_u220_u500'],
+                                ['1T1R_ne5_u500_10u'], ['1T1R_ne5_u500_10u']]
 
     vector_reference_device_vertical = np.array([[0, 0], 
-                                        [-7820, 0], 
                                         [-3390, 290], 
                                         [-3520, 290], 
                                         [-3650, 290],
                                         [-3780, 290],
                                         [-4040, 290],
-                                        [-4170, 290]])
+                                        [-4170, 290],
+                                        [-7820, 0]])
 
 
     for nr_struct, dist_struct in enumerate(vector_reference_device_vertical):
@@ -221,7 +223,7 @@ def wafermap_Neurotech1_1T1R():
     position_devices_vertical.pop(0)
     transistor_type_vertical.pop(0)
     tracks_vertical.pop(0)
-    position, name, geometry = np.array(position_devices), np.array(tracks_vertical), np.array(transistor_type_vertical)
+    position, name, geometry = np.array(position_devices_vertical), np.array(tracks_vertical), np.array(transistor_type_vertical)
     return position, name, geometry
 
 def wafermap_Neurotech1_1T1R_horizontal():

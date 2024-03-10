@@ -15,6 +15,9 @@ import matplotlib.pyplot as plt
 import os
 import sys 
 
+from matplotlib import cm
+
+
 sys.path.append(r"D:\Scripts\Schnieders\Endurance_measurement_aixACCTtester\functions")
 
 from data_management import *
@@ -51,7 +54,8 @@ def make_figures(dir_device, action, tin, Vin, t, V, I, t_filt, V_filt , I_filt)
     fig.tight_layout()
     fig.savefig(os.path.join(dir_device,  f"{action}_{'V_set='}{np.around(max(Vin),2)}_{'V_reset='}{np.around(min(Vin),2)}_{get_formatted_datetime()}.png"))
     plt.close(fig)
-    
+
+
 def figure_endurance(df_endurance, states, device, dir_device):
     R, states = np.concatenate(df_endurance.R),  np.concatenate(df_endurance.state)
     R_HRS, R_LRS = R[states=='HRS'], R[states=='LRS']
